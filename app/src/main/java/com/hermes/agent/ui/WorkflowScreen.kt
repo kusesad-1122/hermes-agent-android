@@ -89,11 +89,23 @@ fun WorkflowScreen() {
         )
 
         // Mode selector
-        PillSegmentedControl(
-            items = listOf("Live", "History"),
-            selectedIndex = selectedTab,
-            onSelected = { selectedTab = it }
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                label = { Text("Live") }
+            )
+            FilterChip(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                label = { Text("History") }
+            )
+        }
 
         // Status bar
         Surface(
