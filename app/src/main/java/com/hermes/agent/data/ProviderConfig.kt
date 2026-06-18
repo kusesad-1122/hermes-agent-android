@@ -150,8 +150,33 @@ class ProviderStorage(private val context: Context) {
         }
     }
 
+    fun updateModels(providerId: String, models: List<String>, defaultModel: String? = null) {
+        val configs = getAllConfigs().toMutableList()
+        val idx = configs.indexOfFirst { it.id == providerId }
+        if (idx >= 0) {
+            val old = configs[idx]
+            configs[idx] = old.copy(
+                models = models,
+                defaultModel = defaultModel ?: old.defaultModel,
+                lastTestTime = System.currentTimeMillis()
+            )
+            prefs.edit().putString("providers", gson.toJson(configs)).apply()
+        }
+    }
+
+    fun setActiveProvider(providerId: String) {
+        val updated = getAllConfigs().map {
+            it.copy(isActive = it.id == providerId)
+        }
+        prefs.edit().putString("providers", gson.toJson(updated)).apply()
+    }
+
+    fun getProvider(providerId: String): ProviderConfig? {
+        return getAllConfigs().firstOrNull { it.id == providerId }
+    }
+
     fun getDefaultProvider(): ProviderConfig? {
         val active = getActiveConfigs()
-        return active.firstOrNull { it.defaultModel.isNotEmpty() } ?: active.firstOrNull()
+        return active.firstOrNull() ?: getAllConfigs().firstOrNull()
     }
 }
