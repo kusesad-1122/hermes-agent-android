@@ -1,11 +1,16 @@
 package com.hermes.agent.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Send
@@ -13,8 +18,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.chaquo.python.Python
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -30,6 +37,7 @@ data class ChatMessage(
 
 @Composable
 fun ChatScreen() {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -38,14 +46,48 @@ fun ChatScreen() {
     var isProcessing by remember { mutableStateOf(false) }
     var providerConfigured by remember { mutableStateOf(false) }
 
+    // Voice state
+    var isListening by remember { mutableStateOf(false) }
+    var isSpeaking by remember { mutableStateOf(false) }
+    var partialText by remember { mutableStateOf("") }
+    val voiceHelper = remember { VoiceHelper(context) }
+
+    // Permission launcher
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            voiceHelper.startListening { recognized ->
+                inputText = recognized
+                partialText = ""
+                isListening = false
+            }
+        } else {
+            messages.add(ChatMessage("system", "⚠️ 需要录音权限才能使用语音输入"))
+        }
+    }
+
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
         }
     }
 
-    // Configure DeepSeek on first composition
+    // Initialize voice + DeepSeek
     LaunchedEffect(Unit) {
+        voiceHelper.onPartialResult = { text ->
+            partialText = text
+            inputText = text
+        }
+        voiceHelper.onListeningStateChanged = { listening ->
+            isListening = listening
+        }
+        voiceHelper.onError = { error ->
+            messages.add(ChatMessage("system", "🎤 $error"))
+            isListening = false
+        }
+        voiceHelper.initialize()
+
         try {
             val py = Python.getInstance()
             val agentLoop = py.getModule("agent_loop")
@@ -65,11 +107,19 @@ fun ChatScreen() {
         }
     }
 
+    // Cleanup voice on dispose
+    DisposableEffect(Unit) {
+        onDispose {
+            voiceHelper.shutdown()
+        }
+    }
+
     fun sendMessage() {
         val text = inputText.trim()
         if (text.isEmpty() || isProcessing) return
 
         inputText = ""
+        partialText = ""
         messages.add(ChatMessage("user", text))
         isProcessing = true
 
@@ -161,7 +211,37 @@ fun ChatScreen() {
                 MessageBubble(msg)
             }
 
-            if (isProcessing) {
+            // Listening indicator
+            if (isListening) {
+                item {
+                    Row(
+                        modifier = Modifier.padding(start = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "正在聆听...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        if (partialText.isNotEmpty()) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                partialText.take(50),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (isProcessing && !isListening) {
                 item {
                     Row(
                         modifier = Modifier.padding(start = 4.dp),
@@ -182,6 +262,7 @@ fun ChatScreen() {
             }
         }
 
+        // Input bar
         Surface(
             tonalElevation = 2.dp,
             shape = MaterialTheme.shapes.large,
@@ -196,13 +277,52 @@ fun ChatScreen() {
                 IconButton(onClick = { }) {
                     Icon(Icons.Outlined.AttachFile, contentDescription = "附件")
                 }
-                IconButton(onClick = { }) {
-                    Icon(Icons.Outlined.Mic, contentDescription = "语音")
+
+                // Voice button with permission check
+                IconButton(
+                    onClick = {
+                        if (isListening) {
+                            voiceHelper.stopListening()
+                        } else if (isSpeaking) {
+                            voiceHelper.stopSpeaking()
+                            isSpeaking = false
+                        } else {
+                            // Check permission
+                            if (ContextCompat.checkSelfPermission(
+                                    context, Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                voiceHelper.startListening { recognized ->
+                                    inputText = recognized
+                                    partialText = ""
+                                }
+                            } else {
+                                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                    },
+                    enabled = !isProcessing
+                ) {
+                    Icon(
+                        if (isListening) Icons.Filled.Stop else Icons.Outlined.Mic,
+                        contentDescription = if (isListening) "停止" else "语音",
+                        tint = if (isListening)
+                            MaterialTheme.colorScheme.error
+                        else if (!isProcessing)
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    )
                 }
+
                 TextField(
                     value = inputText,
                     onValueChange = { inputText = it },
-                    placeholder = { Text("输入消息...") },
+                    placeholder = {
+                        Text(
+                            if (isListening) "正在听..." else "输入消息..."
+                        )
+                    },
                     modifier = Modifier.weight(1f),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -213,6 +333,7 @@ fun ChatScreen() {
                     singleLine = false,
                     maxLines = 4
                 )
+
                 IconButton(
                     onClick = { sendMessage() },
                     enabled = inputText.isNotBlank() && !isProcessing
