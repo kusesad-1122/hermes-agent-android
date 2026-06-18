@@ -4,9 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -16,7 +17,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.hermes.agent.navigation.Screen
-import com.hermes.agent.ui.*
+import com.hermes.agent.ui.ChatScreen
+import com.hermes.agent.ui.SkillsScreen
+import com.hermes.agent.ui.MemoryScreen
+import com.hermes.agent.ui.SettingsScreen
 import com.hermes.agent.ui.theme.HermesTheme
 
 class MainActivity : ComponentActivity() {
@@ -50,14 +54,13 @@ fun HermesAppContent() {
                     )
                 },
                 actions = {
-                    // 模型指示器
                     Surface(
                         shape = MaterialTheme.shapes.small,
                         color = MaterialTheme.colorScheme.primaryContainer,
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
                         Text(
-                            text = "Model ▾",
+                            text = "Model",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -77,9 +80,7 @@ fun HermesAppContent() {
                 Screen.all.forEach { screen ->
                     val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
                     NavigationBarItem(
-                        icon = {
-                            Icon(screen.icon, contentDescription = screen.title)
-                        },
+                        icon = { Icon(screen.icon, contentDescription = screen.title) },
                         label = { Text(screen.title, style = MaterialTheme.typography.labelSmall) },
                         selected = selected,
                         onClick = {
