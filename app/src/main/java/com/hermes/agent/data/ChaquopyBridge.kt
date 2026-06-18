@@ -27,17 +27,26 @@ object ChaquopyBridge {
     }
 
     /** 将任意 PyObject 转为最合适的 Kotlin/Java 类型 */
-    private fun convertPy(obj: PyObject?): Any? {
+    private fun convertPy(obj: Any?): Any? {
         if (obj == null) return null
-        return try {
-            obj.toJava()  // Chaquopy 自动转：str→String, int→Int, dict→Map, list→List, None→null
-        } catch (_: Exception) {
-            try {
-                obj.toString()
+        if (obj is PyObject) {
+            return try {
+                // Python dict -> Map<String, Any?>
+                obj.asMap()?.entries?.associate { (k, v) -> k.toString() to convertPy(v) }
             } catch (_: Exception) {
-                null
+                try {
+                    // Python list -> List<Any?>
+                    obj.asList()?.map { convertPy(it) }
+                } catch (_: Exception) {
+                    try {
+                        obj.toString()
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
             }
         }
+        return obj  // Already a Java type (String, Int, etc.)
     }
 
     /** 安全调用 Python 方法并返回 Map<String, Any?> */

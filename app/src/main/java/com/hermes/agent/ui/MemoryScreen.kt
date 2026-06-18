@@ -59,9 +59,9 @@ fun MemoryScreen() {
                 ms.callAttr("initialize")
 
                 // Memories
-                val memList = (ms.callAttr("memory_list") as com.chaquo.python.PyObject).asList()
+                val memList = (ms.callAttr("memory_list") as com.chaquo.python.PyObject).toKList()
                 memories = memList.map { m ->
-                    val d = m.asPyMap()
+                    val d = m.toKMap()
                     MemoryEntry(
                         key = d["key"]?.toString() ?: "",
                         value = d["value"]?.toString() ?: "",
@@ -74,9 +74,9 @@ fun MemoryScreen() {
                 }
 
                 // Sessions
-                val sessList = (ms.callAttr("list_sessions", 50, true) as com.chaquo.python.PyObject).asList()
+                val sessList = (ms.callAttr("list_sessions", 50, true) as com.chaquo.python.PyObject).toKList()
                 sessions = sessList.map { s ->
-                    val d = s.asPyMap()
+                    val d = s.toKMap()
                     SessionInfo(
                         id = d["id"]?.toString() ?: "",
                         title = d["title"]?.toString(),
@@ -89,7 +89,7 @@ fun MemoryScreen() {
                 }
 
                 // Stats
-                val s = ms.callAttr("get_stats").asPyMap()
+                val s = ms.callAttr("get_stats").toKMap()
                 stats = s.entries.associate { (k, v) -> k.toString() to v?.toString() }
             } catch (_: Exception) {}
             isLoading = false

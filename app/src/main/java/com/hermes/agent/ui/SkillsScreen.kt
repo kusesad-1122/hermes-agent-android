@@ -31,7 +31,7 @@ data class SkillItem(
 )
 
 @Suppress("UNCHECKED_CAST")
-private fun parseSkillItem(raw: Any): SkillItem {
+private fun parseSkillItem(raw: Any?): SkillItem {
     val m = raw as? Map<String, Any?> ?: emptyMap()
     return SkillItem(
         name = m["name"]?.toString() ?: "",
@@ -60,7 +60,7 @@ fun SkillsScreen() {
                 val se = py.getModule("skills_engine")
                 se.callAttr("initialize")
                 val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).toKList()
-                skills = list.map { parseSkillItem(it) }
+                skills = list.mapNotNull { item -> val m = item as? Map<String, Any?> ?: return@mapNotNull null; SkillItem(name = m["name"]?.toString() ?: "", description = m["description"]?.toString() ?: "", category = m["category"]?.toString(), tags = try { (m["tags"] as? List<*>)?.map { t -> t.toString() } ?: emptyList() } catch (_: Exception) { emptyList() }, path = m["path"]?.toString() ?: "") }
             } catch (_: Exception) {}
             isLoading = false
         }
@@ -100,7 +100,7 @@ fun SkillsScreen() {
                         val se = py.getModule("skills_engine")
                         se.callAttr("create_skill", name, desc, content, category)
                         val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).toKList()
-                        skills = list.map { parseSkillItem(it) }
+                        skills = list.mapNotNull { item -> val m = item as? Map<String, Any?> ?: return@mapNotNull null; SkillItem(name = m["name"]?.toString() ?: "", description = m["description"]?.toString() ?: "", category = m["category"]?.toString(), tags = try { (m["tags"] as? List<*>)?.map { t -> t.toString() } ?: emptyList() } catch (_: Exception) { emptyList() }, path = m["path"]?.toString() ?: "") }
                     } catch (_: Exception) {}
                 }
                 showCreateDialog = false
