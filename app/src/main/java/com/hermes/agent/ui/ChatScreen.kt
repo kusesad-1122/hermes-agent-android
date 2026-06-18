@@ -25,95 +25,106 @@ import androidx.core.content.ContextCompat
 import com.chaquo.python.Python
 import com.hermes.agent.data.ChaquopyBridge.toKMap
 import com.hermes.agent.data.ChaquopyBridge.toKList
+import com.hermes.agent.data.ChatStore
+import com.hermes.agent.data.SettingsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class ChatMessage(
-    val role: String,       // "user" | "assistant" | "tool" | "system"
+    val role: String,
     val content: String,
     val toolName: String = "",
-    val isStreaming: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val chatStore = remember { ChatStore(context) }
 
     var inputText by remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var isProcessing by remember { mutableStateOf(false) }
     var providerConfigured by remember { mutableStateOf(false) }
+    var currentSessionId by remember { mutableStateOf<String?>(null) }
 
     // Voice state
     var isListening by remember { mutableStateOf(false) }
-    var isSpeaking by remember { mutableStateOf(false) }
     var partialText by remember { mutableStateOf("") }
     val voiceHelper = remember { VoiceHelper(context) }
 
-    // Permission launcher
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
             voiceHelper.startListening { recognized ->
-                inputText = recognized
-                partialText = ""
-                isListening = false
+                inputText = recognized; partialText = ""; isListening = false
             }
         } else {
-            messages.add(ChatMessage("system", "⚠️ 需要录音权限才能使用语音输入"))
+            messages.add(ChatMessage("system", "需要录音权限才能使用语音输入"))
         }
     }
 
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
-        }
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
-    // Initialize voice + DeepSeek
+    // Initialize: load settings + restore last session
     LaunchedEffect(Unit) {
-        voiceHelper.onPartialResult = { text ->
-            partialText = text
-            inputText = text
-        }
-        voiceHelper.onListeningStateChanged = { listening ->
-            isListening = listening
-        }
-        voiceHelper.onError = { error ->
-            messages.add(ChatMessage("system", "🎤 $error"))
-            isListening = false
-        }
+        SettingsManager.initialize(context)
+        voiceHelper.onPartialResult = { text -> partialText = text; inputText = text }
+        voiceHelper.onListeningStateChanged = { listening -> isListening = listening }
+        voiceHelper.onError = { error -> messages.add(ChatMessage("system", error)); isListening = false }
         voiceHelper.initialize()
 
+        // Restore or create session
+        val sessions = chatStore.getSessions()
+        currentSessionId = if (sessions.isNotEmpty()) sessions[0].id else chatStore.createSession()
+
+        // Load messages from storage
+        currentSessionId?.let { sid ->
+            val stored = chatStore.getMessages(sid)
+            if (stored.isNotEmpty()) {
+                messages.clear()
+                stored.forEach { row ->
+                    messages.add(ChatMessage(row.role, row.content, row.toolName, row.timestamp))
+                }
+            }
+        }
+
+        // Configure agent from settings
         try {
             val py = Python.getInstance()
             val agentLoop = py.getModule("agent_loop")
-            agentLoop.callAttr(
-                "configure",
-                "https://api.deepseek.com/v1",
-                "sk-06a0fc1cc4f94aebb808b0286c8fc2f9",
-                "deepseek-chat",
-                10,
-                4096,
-                0.7
-            )
+
+            // Read from SettingsManager, fallback to defaults
+            val model = SettingsManager.model.value
+            val maxTokens = SettingsManager.maxTokens.value
+            val maxIter = SettingsManager.maxIterations.value
+            val temp = SettingsManager.temperature.value
+
+            // Get API key from secure storage
+            val apiKey = SettingsManager.getSecureString("deepseek_api_key")
+                ?: "sk-06a0fc1cc4f94aebb808b0286c8fc2f9" // fallback for first run
+            val baseUrl = "https://api.deepseek.com/v1"
+
+            agentLoop.callAttr("configure", baseUrl, apiKey, model, maxIter, maxTokens, temp)
             providerConfigured = true
-            messages.add(ChatMessage("system", "Hermes Agent 已就绪 (DeepSeek)"))
+            if (messages.isEmpty()) {
+                messages.add(ChatMessage("system", "Hermes Agent 就绪 ($model)"))
+            }
         } catch (e: Exception) {
             messages.add(ChatMessage("system", "初始化失败: ${e.message}"))
         }
     }
 
-    // Cleanup voice on dispose
     DisposableEffect(Unit) {
-        onDispose {
-            voiceHelper.shutdown()
-        }
+        onDispose { voiceHelper.shutdown() }
     }
 
     fun sendMessage() {
@@ -123,22 +134,33 @@ fun ChatScreen() {
         inputText = ""
         partialText = ""
         messages.add(ChatMessage("user", text))
+        currentSessionId?.let { chatStore.addMessage(it, "user", text) }
         isProcessing = true
 
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) {
-                    val py = Python.getInstance()
-                    val agentLoop = py.getModule("agent_loop")
-                    val history = py.builtins.callAttr("list")
-                    for (msg in messages.filter { it.role != "system" }) {
-                        val dict = py.builtins.callAttr("dict")
-                        dict.callAttr("__setitem__", "role", msg.role)
-                        dict.callAttr("__setitem__", "content", msg.content)
-                        history.callAttr("append", dict)
+                // 60s timeout to prevent infinite spinner
+                val result = withTimeoutOrNull(120_000L) {
+                    withContext(Dispatchers.IO) {
+                        val py = Python.getInstance()
+                        val agentLoop = py.getModule("agent_loop")
+                        val history = py.builtins.callAttr("list")
+                        for (msg in messages.filter { it.role != "system" && it.role != "tool" }) {
+                            val dict = py.builtins.callAttr("dict")
+                            dict.callAttr("__setitem__", "role", msg.role)
+                            dict.callAttr("__setitem__", "content", msg.content)
+                            history.callAttr("append", dict)
+                        }
+                        @Suppress("UNCHECKED_CAST")
+                        (agentLoop.callAttr("run_agent", text, history) as com.chaquo.python.PyObject).toKMap()
                     }
-                    @Suppress("UNCHECKED_CAST")
-                    (agentLoop.callAttr("run_agent", text, history) as com.chaquo.python.PyObject).toKMap()
+                }
+
+                if (result == null) {
+                    val errMsg = "请求超时 (120s)，请检查网络或模型可用性"
+                    messages.add(ChatMessage("system", errMsg))
+                    currentSessionId?.let { chatStore.addMessage(it, "system", errMsg) }
+                    return@launch
                 }
 
                 val response = result["response"]?.toString() ?: ""
@@ -152,94 +174,65 @@ fun ChatScreen() {
                     for (tc in (toolCalls as com.chaquo.python.PyObject).toKList()) {
                         val tcMap = tc as? Map<String, Any?> ?: emptyMap()
                         val name = tcMap["name"]?.toString() ?: "unknown"
-                        messages.add(ChatMessage("tool", "🔧 $name", toolName = name))
+                        val toolMsg = ChatMessage("tool", "[$name]", toolName = name)
+                        messages.add(toolMsg)
+                        currentSessionId?.let { chatStore.addMessage(it, "tool", "[$name]", name) }
                     }
                 }
 
                 if (response.isNotEmpty()) {
                     messages.add(ChatMessage("assistant", response))
+                    currentSessionId?.let { chatStore.addMessage(it, "assistant", response) }
                 } else if (error != null) {
-                    messages.add(ChatMessage("system", "⚠️ $error"))
+                    val errMsg = formatError(error)
+                    messages.add(ChatMessage("system", errMsg))
+                    currentSessionId?.let { chatStore.addMessage(it, "system", errMsg) }
                 }
 
-                if (iterations > 0) {
-                    messages.add(ChatMessage("system", "📊 $iterations 轮 | $totalTokens tokens | ${latencyMs}ms"))
+                if (iterations > 0 && response.isNotEmpty()) {
+                    val stats = "$iterations 轮 | $totalTokens tokens | ${latencyMs}ms"
+                    messages.add(ChatMessage("system", stats))
                 }
             } catch (e: Exception) {
-                messages.add(ChatMessage("system", "❌ 错误: ${e.message}"))
+                val errMsg = formatError(e.message ?: e.toString())
+                messages.add(ChatMessage("system", errMsg))
+                currentSessionId?.let { chatStore.addMessage(it, "system", errMsg) }
             } finally {
                 isProcessing = false
             }
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
             if (messages.isEmpty() && !isProcessing) {
                 item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 120.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(Modifier.fillMaxWidth().padding(top = 120.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "Hermes Agent",
-                                style = MaterialTheme.typography.displayLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("Hermes Agent", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = if (providerConfigured) "DeepSeek 已连接" else "正在连接...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text(if (providerConfigured) "已连接" else "正在连接...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             }
 
-            items(messages) { msg ->
-                MessageBubble(msg)
-            }
+            items(messages) { msg -> MessageBubble(msg) }
 
-            // Listening indicator
             if (isListening) {
                 item {
-                    Row(
-                        modifier = Modifier.padding(start = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.error
-                        )
+                    Row(Modifier.padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            "正在聆听...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
+                        Text("正在聆听...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                         if (partialText.isNotEmpty()) {
                             Spacer(Modifier.width(8.dp))
-                            Text(
-                                partialText.take(50),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text(partialText.take(50), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -247,62 +240,26 @@ fun ChatScreen() {
 
             if (isProcessing && !isListening) {
                 item {
-                    Row(
-                        modifier = Modifier.padding(start = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp
-                        )
+                    Row(Modifier.padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            "思考中...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("思考中...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
 
-        // Input bar
-        Surface(
-            tonalElevation = 2.dp,
-            shape = MaterialTheme.shapes.large,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp, top = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { }) {
-                    Icon(Icons.Outlined.AttachFile, contentDescription = "附件")
-                }
+        Surface(tonalElevation = 2.dp, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp, top = 4.dp)) {
+            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { }) { Icon(Icons.Outlined.AttachFile, contentDescription = "附件") }
 
-                // Voice button with permission check
                 IconButton(
                     onClick = {
-                        if (isListening) {
-                            voiceHelper.stopListening()
-                        } else if (isSpeaking) {
-                            voiceHelper.stopSpeaking()
-                            isSpeaking = false
-                        } else {
-                            // Check permission
-                            if (ContextCompat.checkSelfPermission(
-                                    context, Manifest.permission.RECORD_AUDIO
-                                ) == PackageManager.PERMISSION_GRANTED
-                            ) {
-                                voiceHelper.startListening { recognized ->
-                                    inputText = recognized
-                                    partialText = ""
-                                }
-                            } else {
-                                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                            }
+                        if (isListening) { voiceHelper.stopListening() }
+                        else {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                voiceHelper.startListening { recognized -> inputText = recognized; partialText = "" }
+                            } else { audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
                         }
                     },
                     enabled = !isProcessing
@@ -310,23 +267,13 @@ fun ChatScreen() {
                     Icon(
                         if (isListening) Icons.Filled.Stop else Icons.Outlined.Mic,
                         contentDescription = if (isListening) "停止" else "语音",
-                        tint = if (isListening)
-                            MaterialTheme.colorScheme.error
-                        else if (!isProcessing)
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 TextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    placeholder = {
-                        Text(
-                            if (isListening) "正在听..." else "输入消息..."
-                        )
-                    },
+                    value = inputText, onValueChange = { inputText = it },
+                    placeholder = { Text(if (isListening) "正在听..." else "输入消息...") },
                     modifier = Modifier.weight(1f),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -334,25 +281,26 @@ fun ChatScreen() {
                         focusedIndicatorColor = MaterialTheme.colorScheme.surface,
                         unfocusedIndicatorColor = MaterialTheme.colorScheme.surface
                     ),
-                    singleLine = false,
-                    maxLines = 4
+                    singleLine = false, maxLines = 4
                 )
 
-                IconButton(
-                    onClick = { sendMessage() },
-                    enabled = inputText.isNotBlank() && !isProcessing
-                ) {
-                    Icon(
-                        Icons.Outlined.Send,
-                        contentDescription = "发送",
-                        tint = if (inputText.isNotBlank() && !isProcessing)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                IconButton(onClick = { sendMessage() }, enabled = inputText.isNotBlank() && !isProcessing) {
+                    Icon(Icons.Outlined.Send, contentDescription = "发送",
+                        tint = if (inputText.isNotBlank() && !isProcessing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
+    }
+}
+
+private fun formatError(error: String): String {
+    return when {
+        "Authentication" in error || "401" in error -> "鉴权失败：API Key 无效或已过期"
+        "Connection" in error || "Connect" in error -> "网络连接失败：请检查网络"
+        "timeout" in error.lowercase() || "Timeout" in error -> "请求超时：模型响应超过 60 秒"
+        "NotFound" in error || "404" in error || "model" in error.lowercase() -> "模型不存在：请检查模型名称"
+        "RateLimit" in error || "429" in error -> "请求频率超限：请稍后重试"
+        else -> error
     }
 }
 
@@ -368,27 +316,17 @@ fun MessageBubble(msg: ChatMessage) {
         isSystem -> MaterialTheme.colorScheme.surface
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
-
     val textColor = when {
         isUser -> MaterialTheme.colorScheme.onPrimaryContainer
         isTool -> MaterialTheme.colorScheme.onSurfaceVariant
         isSystem -> MaterialTheme.colorScheme.onSurfaceVariant
         else -> MaterialTheme.colorScheme.onSurface
     }
-
     val alignment = if (isUser) Alignment.End else Alignment.Start
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = alignment
-    ) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
         Surface(
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (isUser) 16.dp else 4.dp,
-                bottomEnd = if (isUser) 4.dp else 16.dp
-            ),
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = if (isUser) 16.dp else 4.dp, bottomEnd = if (isUser) 4.dp else 16.dp),
             color = bubbleColor,
             modifier = Modifier.widthIn(max = 320.dp)
         ) {
