@@ -52,8 +52,9 @@ fun ChatScreen() {
     var isProcessing by remember { mutableStateOf(false) }
     var providerConfigured by remember { mutableStateOf(false) }
     var currentSessionId by remember { mutableStateOf<String?>(null) }
+    var currentStatus by remember { mutableStateOf("idle") }
+    var lastError by remember { mutableStateOf<String?>(null) }
 
-    // Voice state
     var isListening by remember { mutableStateOf(false) }
     var partialText by remember { mutableStateOf("") }
     val voiceHelper = remember { VoiceHelper(context) }
@@ -74,58 +75,46 @@ fun ChatScreen() {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
-    // Initialize: load settings + restore last session
     LaunchedEffect(Unit) {
         SettingsManager.initialize(context)
         voiceHelper.onPartialResult = { text -> partialText = text; inputText = text }
         voiceHelper.onListeningStateChanged = { listening -> isListening = listening }
-        voiceHelper.onError = { error -> messages.add(ChatMessage("system", error)); isListening = false }
+        voiceHelper.onError = { error -> messages.add(ChatMessage("system", error)); isListening = false; currentStatus = "error"; lastError = error }
         voiceHelper.initialize()
 
-        // Restore or create session
         val sessions = chatStore.getSessions()
         currentSessionId = if (sessions.isNotEmpty()) sessions[0].id else chatStore.createSession()
 
-        // Load messages from storage
         currentSessionId?.let { sid ->
             val stored = chatStore.getMessages(sid)
             if (stored.isNotEmpty()) {
                 messages.clear()
-                stored.forEach { row ->
-                    messages.add(ChatMessage(row.role, row.content, row.toolName, row.timestamp))
-                }
+                stored.forEach { row -> messages.add(ChatMessage(row.role, row.content, row.toolName, row.timestamp)) }
             }
         }
 
-        // Configure agent from settings
         try {
             val py = Python.getInstance()
             val agentLoop = py.getModule("agent_loop")
-
-            // Read from SettingsManager, fallback to defaults
             val model = SettingsManager.model.value
             val maxTokens = SettingsManager.maxTokens.value
             val maxIter = SettingsManager.maxIterations.value
             val temp = SettingsManager.temperature.value
-
-            // Get API key from secure storage
-            val apiKey = SettingsManager.getSecureString("deepseek_api_key")
-                ?: "sk-06a0fc1cc4f94aebb808b0286c8fc2f9" // fallback for first run
+            val apiKey = SettingsManager.getSecureString("deepseek_api_key") ?: "sk-06a0fc1cc4f94aebb808b0286c8fc2f9"
             val baseUrl = "https://api.deepseek.com/v1"
-
             agentLoop.callAttr("configure", baseUrl, apiKey, model, maxIter, maxTokens, temp)
             providerConfigured = true
-            if (messages.isEmpty()) {
-                messages.add(ChatMessage("system", "Hermes Agent 就绪 ($model)"))
-            }
+            currentStatus = "ready"
+            if (messages.isEmpty()) messages.add(ChatMessage("system", "Hermes Agent 就绪 ($model)"))
         } catch (e: Exception) {
-            messages.add(ChatMessage("system", "初始化失败: ${e.message}"))
+            val err = "初始化失败: ${e.message}"
+            messages.add(ChatMessage("system", err))
+            currentStatus = "error"
+            lastError = err
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose { voiceHelper.shutdown() }
-    }
+    DisposableEffect(Unit) { onDispose { voiceHelper.shutdown() } }
 
     fun sendMessage() {
         val text = inputText.trim()
@@ -136,10 +125,11 @@ fun ChatScreen() {
         messages.add(ChatMessage("user", text))
         currentSessionId?.let { chatStore.addMessage(it, "user", text) }
         isProcessing = true
+        currentStatus = "requesting"
+        lastError = null
 
         scope.launch {
             try {
-                // 60s timeout to prevent infinite spinner
                 val result = withTimeoutOrNull(120_000L) {
                     withContext(Dispatchers.IO) {
                         val py = Python.getInstance()
@@ -160,6 +150,8 @@ fun ChatScreen() {
                     val errMsg = "请求超时 (120s)，请检查网络或模型可用性"
                     messages.add(ChatMessage("system", errMsg))
                     currentSessionId?.let { chatStore.addMessage(it, "system", errMsg) }
+                    currentStatus = "timeout"
+                    lastError = errMsg
                     return@launch
                 }
 
@@ -171,6 +163,7 @@ fun ChatScreen() {
                 val error = result["error"]?.toString()
 
                 if (toolCalls != null) {
+                    currentStatus = "tooling"
                     for (tc in (toolCalls as com.chaquo.python.PyObject).toKList()) {
                         val tcMap = tc as? Map<String, Any?> ?: emptyMap()
                         val name = tcMap["name"]?.toString() ?: "unknown"
@@ -183,10 +176,13 @@ fun ChatScreen() {
                 if (response.isNotEmpty()) {
                     messages.add(ChatMessage("assistant", response))
                     currentSessionId?.let { chatStore.addMessage(it, "assistant", response) }
+                    currentStatus = "done"
                 } else if (error != null) {
                     val errMsg = formatError(error)
                     messages.add(ChatMessage("system", errMsg))
                     currentSessionId?.let { chatStore.addMessage(it, "system", errMsg) }
+                    currentStatus = "error"
+                    lastError = errMsg
                 }
 
                 if (iterations > 0 && response.isNotEmpty()) {
@@ -197,13 +193,31 @@ fun ChatScreen() {
                 val errMsg = formatError(e.message ?: e.toString())
                 messages.add(ChatMessage("system", errMsg))
                 currentSessionId?.let { chatStore.addMessage(it, "system", errMsg) }
+                currentStatus = "error"
+                lastError = errMsg
             } finally {
                 isProcessing = false
             }
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        // Status panel
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Text("状态: $currentStatus", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text("模型: ${SettingsManager.model.value}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (lastError != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(lastError!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -243,7 +257,7 @@ fun ChatScreen() {
                     Row(Modifier.padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text("思考中...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("处理中...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -255,20 +269,16 @@ fun ChatScreen() {
 
                 IconButton(
                     onClick = {
-                        if (isListening) { voiceHelper.stopListening() }
+                        if (isListening) voiceHelper.stopListening()
                         else {
                             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                 voiceHelper.startListening { recognized -> inputText = recognized; partialText = "" }
-                            } else { audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
+                            } else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     },
                     enabled = !isProcessing
                 ) {
-                    Icon(
-                        if (isListening) Icons.Filled.Stop else Icons.Outlined.Mic,
-                        contentDescription = if (isListening) "停止" else "语音",
-                        tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Icon(if (isListening) Icons.Filled.Stop else Icons.Outlined.Mic, contentDescription = if (isListening) "停止" else "语音", tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
                 TextField(
@@ -285,8 +295,7 @@ fun ChatScreen() {
                 )
 
                 IconButton(onClick = { sendMessage() }, enabled = inputText.isNotBlank() && !isProcessing) {
-                    Icon(Icons.Outlined.Send, contentDescription = "发送",
-                        tint = if (inputText.isNotBlank() && !isProcessing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Outlined.Send, contentDescription = "发送", tint = if (inputText.isNotBlank() && !isProcessing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
