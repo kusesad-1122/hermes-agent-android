@@ -136,7 +136,7 @@ fun ChatScreen() {
                         history.callAttr("append", dict)
                     }
                     @Suppress("UNCHECKED_CAST")
-                    agentLoop.callAttr("run_agent", text, history).asMap() as Map<String, Any?>
+                    (agentLoop.callAttr("run_agent", text, history) as com.chaquo.python.PyObject).asMap() as Map<String, Any?>
                 }
 
                 val response = result["response"]?.toString() ?: ""
@@ -147,8 +147,8 @@ fun ChatScreen() {
                 val error = result["error"]?.toString()
 
                 if (toolCalls != null) {
-                    for (tc in toolCalls.asList()) {
-                        val tcMap = tc.asMap() as Map<String, Any?>
+                    for (tc in (toolCalls as com.chaquo.python.PyObject).asList()) {
+                        val tcMap = (tc as com.chaquo.python.PyObject).asMap() as Map<String, Any?>
                         val name = tcMap["name"]?.toString() ?: "unknown"
                         messages.add(ChatMessage("tool", "🔧 $name", toolName = name))
                     }

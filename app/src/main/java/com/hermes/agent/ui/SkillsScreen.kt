@@ -30,7 +30,8 @@ data class SkillItem(
 
 @Suppress("UNCHECKED_CAST")
 private fun parseSkillItem(raw: Any): SkillItem {
-    val m = raw.asMap() as Map<String, Any?>
+    val py = raw as com.chaquo.python.PyObject
+    val m = py.asMap() as Map<String, Any?>
     return SkillItem(
         name = m["name"]?.toString() ?: "",
         description = m["description"]?.toString() ?: "",
@@ -72,7 +73,7 @@ fun SkillsScreen() {
                 try {
                     val py = Python.getInstance()
                     val se = py.getModule("skills_engine")
-                    val result = se.callAttr("view_skill", skill.name)
+                    val result = (se.callAttr("view_skill", skill.name) as? com.chaquo.python.PyObject)
                     skillContent = result?.asMap()?.get("body")?.toString() ?: "无法加载内容"
                 } catch (e: Exception) {
                     skillContent = "加载失败: ${e.message}"

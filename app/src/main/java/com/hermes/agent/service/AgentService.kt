@@ -79,7 +79,7 @@ class AgentService : Service() {
             memoryModule = py.getModule("memory_system")
             val dbPath = getDatabasePath("hermes_memory.db").absolutePath
             val initResult = memoryModule?.callAttr("initialize", dbPath)
-            val resultDict = initResult?.asMap() as? Map<String, Any?>
+            val resultDict = (initResult as? com.chaquo.python.PyObject)?.asMap() as? Map<String, Any?>
 
             val sessions = resultDict?.get("sessions")?.toString()?.toIntOrNull() ?: 0
             val messages = resultDict?.get("messages")?.toString()?.toIntOrNull() ?: 0
@@ -109,7 +109,7 @@ class AgentService : Service() {
                 updateState(STATE_RUNNING)
                 updateNotification("Agent 运行中...")
                 val result = agentLoopModule?.callAttr("run_agent", message)
-                val resultMap = (result?.asMap() ?: mapOf<Any?, Any?>("error" to "No result"))
+                val resultMap = (result as? com.chaquo.python.PyObject)?.asMap() ?: mapOf<Any?, Any?>("error" to "No result")
                 updateState(STATE_READY)
                 withContext(Dispatchers.Main) { callback(resultMap) }
                 val iterations = (resultMap as? Map<String, Any?>)?.get("iterations")?.toString()?.toIntOrNull() ?: 0
