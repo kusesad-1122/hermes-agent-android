@@ -19,11 +19,9 @@ import com.chaquo.python.Python
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Suppress("UNCHECKED_CAST")
-private fun Any?.asPyMap(): Map<String, Any?> = (this as com.chaquo.python.PyObject).asMap() as Map<String, Any?>
+private fun Any.toStrMap(): Map<String, Any?> = (this as com.chaquo.python.PyObject).asMap() as Map<String, Any?>
 
-@Suppress("UNCHECKED_CAST")
-private fun Any?.asPyMap(): Map<String, Any?> = (this as com.chaquo.python.PyObject).asMap() as Map<String, Any?>
+
 
 
 data class MemoryEntry(
@@ -60,7 +58,7 @@ fun MemoryScreen() {
                 ms.callAttr("initialize")
 
                 // Memories
-                val memList = ms.callAttr("memory_list").asList()
+                val memList = (ms.callAttr("memory_list") as com.chaquo.python.PyObject).asList()
                 memories = memList.map { m ->
                     val d = m.asPyMap()
                     MemoryEntry(
@@ -75,7 +73,7 @@ fun MemoryScreen() {
                 }
 
                 // Sessions
-                val sessList = ms.callAttr("list_sessions", 50, true).asList()
+                val sessList = (ms.callAttr("list_sessions", 50, true) as com.chaquo.python.PyObject).asList()
                 sessions = sessList.map { s ->
                     val d = s.asPyMap()
                     SessionInfo(

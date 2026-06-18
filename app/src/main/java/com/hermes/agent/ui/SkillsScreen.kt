@@ -58,7 +58,7 @@ fun SkillsScreen() {
                 val py = Python.getInstance()
                 val se = py.getModule("skills_engine")
                 se.callAttr("initialize")
-                val list = se.callAttr("list_skills").asList()
+                val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).asList()
                 skills = list.map { parseSkillItem(it) }
             } catch (_: Exception) {}
             isLoading = false
@@ -74,7 +74,7 @@ fun SkillsScreen() {
                     val py = Python.getInstance()
                     val se = py.getModule("skills_engine")
                     val result = (se.callAttr("view_skill", skill.name) as? com.chaquo.python.PyObject)
-                    skillContent = result?.asMap()?.get("body")?.toString() ?: "无法加载内容"
+                    skillContent = if (result is com.chaquo.python.PyObject) result.asMap()["body"]?.toString() ?: "无法加载内容" else "无法加载内容"
                 } catch (e: Exception) {
                     skillContent = "加载失败: ${e.message}"
                 }
@@ -98,7 +98,7 @@ fun SkillsScreen() {
                         val py = Python.getInstance()
                         val se = py.getModule("skills_engine")
                         se.callAttr("create_skill", name, desc, content, category)
-                        val list = se.callAttr("list_skills").asList()
+                        val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).asList()
                         skills = list.map { parseSkillItem(it) }
                     } catch (_: Exception) {}
                 }
