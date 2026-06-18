@@ -39,19 +39,15 @@ android {
     buildFeatures { compose = true }
 }
 
-// Chaquopy configuration
 chaquopy {
     defaultConfig {
         version = "3.12"
         pip {
-            // Hermes core dependencies (all pure Python)
-            install("openai==2.24.0")
-            install("pydantic==1.10.21")  // v1 = pure Python, no pydantic-core needed
-            install("python-dotenv==1.2.2")
-            install("fire==0.7.1")
+            // openai + pydantic v1 are embedded as source (not pip installed)
+            // to avoid jiter/pydantic-core Rust dependency resolution.
+            // jiter shim is at app/src/main/python/jiter/__init__.py
             install("httpx==0.28.1")
             install("httpx[socks]==0.28.1")
-            install("rich==14.3.3")
             install("tenacity==9.1.4")
             install("certifi==2026.5.20")
             install("requests==2.33.0")
@@ -75,9 +71,8 @@ chaquopy {
             install("pygments==2.19.2")
             install("markdown-it-py==3.0.0")
             install("mdurl==0.1.2")
-            install("jedi==0.19.2")
-            install("parso==0.8.4")
-            install("decorator==5.2.1")
+            install("annotated-types==0.7.0")
+            install("python-dotenv==1.2.2")
         }
     }
 }
