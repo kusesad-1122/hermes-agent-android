@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import com.chaquo.python.Python
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 data class SkillItem(
     val name: String,
@@ -29,6 +27,18 @@ data class SkillItem(
     val tags: List<String>,
     val path: String,
 )
+
+@Suppress("UNCHECKED_CAST")
+private fun parseSkillItem(raw: Any): SkillItem {
+    val m = raw.asMap() as Map<String, Any?>
+    return SkillItem(
+        name = m["name"]?.toString() ?: "",
+        description = m["description"]?.toString() ?: "",
+        category = m["category"]?.toString(),
+        tags = try { (m["tags"] as? List<*>)?.map { it.toString() } ?: emptyList() } catch (_: Exception) { emptyList() },
+        path = m["path"]?.toString() ?: "",
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,32 +51,21 @@ fun SkillsScreen() {
     var skillContent by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
 
-    // Load skills
-    LaunchedEffect(Unit) {
+    fun loadSkills() {
         scope.launch(Dispatchers.IO) {
             try {
                 val py = Python.getInstance()
                 val se = py.getModule("skills_engine")
                 se.callAttr("initialize")
                 val list = se.callAttr("list_skills").asList()
-                skills = list.map { s ->
-                    val m = s.asMap()
-                    SkillItem(
-                        name = m["name"]?.toString() ?: "",
-                        description = m["description"]?.toString() ?: "",
-                        category = m["category"]?.toString(),
-                        tags = try { m["tags"]?.asList()?.map { it.toString() } ?: emptyList() } catch (_: Exception) { emptyList() },
-                        path = m["path"]?.toString() ?: "",
-                    )
-                }
-            } catch (e: Exception) {
-                // Silent fail - will show empty state
-            }
+                skills = list.map { parseSkillItem(it) }
+            } catch (_: Exception) {}
             isLoading = false
         }
     }
 
-    // Load skill content on selection
+    LaunchedEffect(Unit) { loadSkills() }
+
     LaunchedEffect(selectedSkill) {
         selectedSkill?.let { skill ->
             scope.launch(Dispatchers.IO) {
@@ -82,7 +81,6 @@ fun SkillsScreen() {
         }
     }
 
-    // Filter
     val filtered = if (searchQuery.isBlank()) skills
     else skills.filter {
         it.name.contains(searchQuery, true) ||
@@ -99,18 +97,8 @@ fun SkillsScreen() {
                         val py = Python.getInstance()
                         val se = py.getModule("skills_engine")
                         se.callAttr("create_skill", name, desc, content, category)
-                        // Reload
                         val list = se.callAttr("list_skills").asList()
-                        skills = list.map { s ->
-                            val m = s.asMap()
-                            SkillItem(
-                                name = m["name"]?.toString() ?: "",
-                                description = m["description"]?.toString() ?: "",
-                                category = m["category"]?.toString(),
-                                tags = try { m["tags"]?.asList()?.map { it.toString() } ?: emptyList() } catch (_: Exception) { emptyList() },
-                                path = m["path"]?.toString() ?: "",
-                            )
-                        }
+                        skills = list.map { parseSkillItem(it) }
                     } catch (_: Exception) {}
                 }
                 showCreateDialog = false
@@ -129,7 +117,6 @@ fun SkillsScreen() {
             }
         )
 
-        // Search bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
@@ -169,7 +156,6 @@ fun SkillsScreen() {
         }
     }
 
-    // Skill detail bottom sheet / dialog
     selectedSkill?.let { skill ->
         if (skillContent.isNotEmpty()) {
             AlertDialog(
@@ -203,9 +189,7 @@ fun SkillCard(skill: SkillItem, isSelected: Boolean, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -218,27 +202,17 @@ fun SkillCard(skill: SkillItem, isSelected: Boolean, onClick: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Text(
-                skill.description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            Text(skill.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 @Composable
-fun CreateSkillDialog(
-    onDismiss: () -> Unit,
-    onCreate: (name: String, description: String, content: String, category: String) -> Unit
-) {
+fun CreateSkillDialog(onDismiss: () -> Unit, onCreate: (String, String, String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("创建新 Skill") },
