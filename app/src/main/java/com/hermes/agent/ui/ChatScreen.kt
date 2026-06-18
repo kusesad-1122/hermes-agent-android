@@ -135,7 +135,8 @@ fun ChatScreen() {
                         dict.callAttr("__setitem__", "content", msg.content)
                         history.callAttr("append", dict)
                     }
-                    agentLoop.callAttr("run_agent", text, history).asMap()
+                    @Suppress("UNCHECKED_CAST")
+                    agentLoop.callAttr("run_agent", text, history).asMap() as Map<String, Any?>
                 }
 
                 val response = result["response"]?.toString() ?: ""
@@ -147,7 +148,8 @@ fun ChatScreen() {
 
                 if (toolCalls != null) {
                     for (tc in toolCalls.asList()) {
-                        val name = tc.asMap()["name"]?.toString() ?: "unknown"
+                        val tcMap = tc.asMap() as Map<String, Any?>
+                        val name = tcMap["name"]?.toString() ?: "unknown"
                         messages.add(ChatMessage("tool", "🔧 $name", toolName = name))
                     }
                 }
