@@ -23,6 +23,7 @@ import com.hermes.agent.ui.WorkflowScreen
 import com.hermes.agent.ui.SkillsScreen
 import com.hermes.agent.ui.MemoryScreen
 import com.hermes.agent.ui.SettingsScreen
+import com.hermes.agent.ui.RootScreen
 import com.hermes.agent.ui.ProviderListScreen
 import com.hermes.agent.ui.ProviderEditScreen
 import com.hermes.agent.ui.theme.HermesTheme
@@ -112,7 +113,8 @@ fun HermesAppContent() {
             composable(Screen.Workflow.route) { WorkflowScreen() }
             composable(Screen.Skills.route) { SkillsScreen() }
             composable(Screen.Memory.route) { MemoryScreen() }
-            composable(Screen.Settings.route) { SettingsScreen(onNavigateToProviders = { navController.navigate("providers") }) }
+            composable(Screen.Settings.route) { SettingsScreen(onNavigateToProviders = { navController.navigate("providers") }, onNavigateToRoot = { navController.navigate("root") }, onNavigateToWorkflow = { navController.navigate(Screen.Workflow.route) }) }
+            composable("root") { RootScreen() }
             composable("providers") {
                 ProviderListScreen(
                     onNavigateToAdd = { navController.navigate("provider_add") },
