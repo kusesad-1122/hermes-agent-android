@@ -21,6 +21,8 @@ import com.hermes.agent.ui.ChatScreen
 import com.hermes.agent.ui.SkillsScreen
 import com.hermes.agent.ui.MemoryScreen
 import com.hermes.agent.ui.SettingsScreen
+import com.hermes.agent.ui.ProviderListScreen
+import com.hermes.agent.ui.ProviderEditScreen
 import com.hermes.agent.ui.theme.HermesTheme
 
 class MainActivity : ComponentActivity() {
@@ -112,7 +114,31 @@ fun HermesAppContent() {
             composable(Screen.Chat.route) { ChatScreen() }
             composable(Screen.Skills.route) { SkillsScreen() }
             composable(Screen.Memory.route) { MemoryScreen() }
-            composable(Screen.Settings.route) { SettingsScreen() }
+            composable(Screen.Settings.route) {
+                SettingsScreen(
+                    onNavigateToProviders = { navController.navigate("providers") }
+                )
+            }
+            composable("providers") {
+                ProviderListScreen(
+                    onNavigateToAdd = { navController.navigate("provider_add") },
+                    onNavigateToEdit = { navController.navigate("provider_edit") }
+                )
+            }
+            composable("provider_add") {
+                ProviderEditScreen(
+                    existingProvider = null,
+                    onDone = { navController.popBackStack() },
+                    onCancel = { navController.popBackStack() }
+                )
+            }
+            composable("provider_edit") {
+                ProviderEditScreen(
+                    existingProvider = null,
+                    onDone = { navController.popBackStack() },
+                    onCancel = { navController.popBackStack() }
+                )
+            }
         }
     }
 }

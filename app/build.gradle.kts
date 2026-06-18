@@ -39,11 +39,13 @@ android {
     buildFeatures { compose = true }
 }
 
-// Chaquopy: 仅运行时，无 pip 包（Stage 01 验证 Gradle + Kotlin + Chaquopy 管道）
-// pip 包将在 Stage 02 逐步添加（需解决 Rust/C 扩展交叉编译）
+// Chaquopy 配置
 chaquopy {
     defaultConfig {
         version = "3.12"
+        pip {
+            install("httpx==0.28.1")
+        }
     }
 }
 
@@ -62,6 +64,12 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.8.5")
+
+    // AndroidX Security for Encrypted SharedPreferences
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    
+    // Gson for JSON serialization
+    implementation("com.google.code.gson:gson:2.11.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

@@ -12,7 +12,9 @@ import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(
+    onNavigateToProviders: () -> Unit = {}
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -26,26 +28,27 @@ fun SettingsScreen() {
         )
 
         val sections = listOf(
-            "账户与模型" to "模型供应商、API Key、模型切换",
-            "显示与主题" to "字体、字号、主题色",
-            "通知" to "推送分级、通知渠道",
-            "Skills 与 MCP" to "技能管理、MCP 服务器",
-            "记忆与存储" to "记忆检索、存储阈值",
-            "权限与安全" to "Root 能力开关、可逆性闸门",
-            "Cron" to "定时任务管理",
-            "Root" to "Root Gateway、审计日志",
-            "手势" to "手势操作配置",
-            "语音" to "STT/TTS 设置",
-            "Gateway" to "多平台消息接入",
-            "关于" to "版本、许可、更新"
+            Triple("账户与模型", "模型供应商、API Key、模型切换", onNavigateToProviders),
+            Triple("显示与主题", "字体、字号、主题色", {}),
+            Triple("通知", "推送分级、通知渠道", {}),
+            Triple("Skills 与 MCP", "技能管理、MCP 服务器", {}),
+            Triple("记忆与存储", "记忆检索、存储阈值", {}),
+            Triple("权限与安全", "Root 能力开关、可逆性闸门", {}),
+            Triple("Cron", "定时任务管理", {}),
+            Triple("Root", "Root Gateway、审计日志", {}),
+            Triple("手势", "手势操作配置", {}),
+            Triple("语音", "STT/TTS 设置", {}),
+            Triple("Gateway", "多平台消息接入", {}),
+            Triple("关于", "版本、许可、更新", {})
         )
 
-        sections.forEach { (title, subtitle) ->
+        sections.forEach { (title, subtitle, onClick) ->
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 2.dp),
-                shape = MaterialTheme.shapes.small
+                shape = MaterialTheme.shapes.small,
+                onClick = onClick
             ) {
                 ListItem(
                     headlineContent = {
