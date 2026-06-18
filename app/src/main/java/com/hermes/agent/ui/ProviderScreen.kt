@@ -38,6 +38,7 @@ fun ProviderListScreen(
     val storage = remember { ProviderStorage(context) }
     var providers by remember { mutableStateOf(storage.getAllConfigs()) }
     var testingId by remember { mutableStateOf<String?>(null) }
+    var bannerMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -50,6 +51,12 @@ fun ProviderListScreen(
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
         )
+
+        bannerMessage?.let {
+            Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
+                Text(it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
 
         if (providers.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -84,6 +91,9 @@ fun ProviderListScreen(
                                     }
                                 }
                                 val success = result["success"]?.toString()?.toBoolean() ?: false
+                                val latency = result["latency_ms"]?.toString() ?: "0"
+                                val error = result["error"]?.toString()
+                                bannerMessage = if (success) "${provider.name} 连通成功 (${latency}ms)" else "${provider.name} 测试失败: ${error ?: "unknown"}"
                                 storage.updateTestResult(provider.id, success)
                                 providers = storage.getAllConfigs()
                                 testingId = null
@@ -231,6 +241,8 @@ fun ProviderEditScreen(existingProvider: ProviderConfig? = null, onDone: () -> U
 
                 // Available models dropdown
                 if (availableModels.isNotEmpty()) {
+                    Text("已拉取 ${availableModels.size} 个模型", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(4.dp))
                     Text("可用模型 (${availableModels.size}):", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     LazyColumn(modifier = Modifier.heightIn(max = 120.dp)) {
                         items(availableModels) { model ->

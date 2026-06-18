@@ -67,6 +67,7 @@ fun SkillsScreen() {
     var selectedSkill by remember { mutableStateOf<SkillItem?>(null) }
     var skillContent by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var refreshMessage by remember { mutableStateOf<String?>(null) }
 
     // MCP state
     var mcpServers by remember { mutableStateOf(listOf<McpServerItem>()) }
@@ -86,7 +87,8 @@ fun SkillsScreen() {
                         try { (m["tags"] as? List<*>)?.map { it.toString() } ?: emptyList() } catch (_: Exception) { emptyList() },
                         m["path"]?.toString() ?: "")
                 }
-            } catch (_: Exception) {}
+                refreshMessage = "Skills 已刷新：${skills.size} 项"
+            } catch (e: Exception) { refreshMessage = "Skills 刷新失败: ${e.message}" }
             isLoadingSkills = false
         }
     }
@@ -109,7 +111,8 @@ fun SkillsScreen() {
                         m["error"]?.toString(),
                     )
                 }
-            } catch (_: Exception) {}
+                refreshMessage = "MCP 已刷新：${mcpServers.size} 个 server"
+            } catch (e: Exception) { refreshMessage = "MCP 刷新失败: ${e.message}" }
             isLoadingMcp = false
         }
     }
@@ -168,6 +171,12 @@ fun SkillsScreen() {
                 }
             }
         )
+
+        refreshMessage?.let {
+            Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Text(it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+            }
+        }
 
         // Pill segmented control
         PillSegmentedControl(

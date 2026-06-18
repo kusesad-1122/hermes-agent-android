@@ -73,6 +73,7 @@ chaquopy {
             install("mdurl==0.1.2")
             install("annotated-types==0.7.0")
             install("python-dotenv==1.2.2")
+            install("tqdm==4.68.3")
         }
     }
 }
