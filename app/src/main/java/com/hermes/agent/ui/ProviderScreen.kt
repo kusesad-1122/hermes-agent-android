@@ -21,6 +21,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.chaquo.python.Python
 import com.hermes.agent.data.*
+import com.hermes.agent.data.ChaquopyBridge.toKMap
+import com.hermes.agent.data.ChaquopyBridge.toKList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
