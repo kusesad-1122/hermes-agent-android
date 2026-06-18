@@ -64,7 +64,7 @@ chaquopy {
             install("typing_extensions==4.15.0")
             install("sniffio==1.3.1")
             install("idna==3.18")
-            install("distro==2.2.0")
+            install("distro==1.9.0")
             install("anyio==4.10.0")
             install("h11==0.16.0")
             install("h2==4.2.0")
