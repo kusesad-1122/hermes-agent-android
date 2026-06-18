@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chaquo.python.Python
+import com.hermes.agent.data.ChaquopyBridge.toKMap
+import com.hermes.agent.data.ChaquopyBridge.toKList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -30,8 +32,7 @@ data class SkillItem(
 
 @Suppress("UNCHECKED_CAST")
 private fun parseSkillItem(raw: Any): SkillItem {
-    val py = raw as com.chaquo.python.PyObject
-    val m = py.asMap() as Map<String, Any?>
+    val m = raw as? Map<String, Any?> ?: emptyMap()
     return SkillItem(
         name = m["name"]?.toString() ?: "",
         description = m["description"]?.toString() ?: "",
@@ -58,7 +59,7 @@ fun SkillsScreen() {
                 val py = Python.getInstance()
                 val se = py.getModule("skills_engine")
                 se.callAttr("initialize")
-                val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).asList()
+                val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).toKList()
                 skills = list.map { parseSkillItem(it) }
             } catch (_: Exception) {}
             isLoading = false
@@ -73,8 +74,8 @@ fun SkillsScreen() {
                 try {
                     val py = Python.getInstance()
                     val se = py.getModule("skills_engine")
-                    val result = (se.callAttr("view_skill", skill.name) as? com.chaquo.python.PyObject)
-                    skillContent = if (result is com.chaquo.python.PyObject) result.asMap()["body"]?.toString() ?: "无法加载内容" else "无法加载内容"
+                    val result = se.callAttr("view_skill", skill.name)
+                    skillContent = (result as? com.chaquo.python.PyObject)?.toKMap()?.get("body")?.toString() ?: "无法加载内容"
                 } catch (e: Exception) {
                     skillContent = "加载失败: ${e.message}"
                 }
@@ -98,7 +99,7 @@ fun SkillsScreen() {
                         val py = Python.getInstance()
                         val se = py.getModule("skills_engine")
                         se.callAttr("create_skill", name, desc, content, category)
-                        val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).asList()
+                        val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).toKList()
                         skills = list.map { parseSkillItem(it) }
                     } catch (_: Exception) {}
                 }

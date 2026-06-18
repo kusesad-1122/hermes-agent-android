@@ -14,6 +14,8 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.chaquo.python.Python
 import com.hermes.agent.MainActivity
+import com.hermes.agent.data.ChaquopyBridge.toKMap
+import com.hermes.agent.data.ChaquopyBridge.toKList
 import kotlinx.coroutines.*
 
 class AgentService : Service() {
@@ -79,7 +81,7 @@ class AgentService : Service() {
             memoryModule = py.getModule("memory_system")
             val dbPath = getDatabasePath("hermes_memory.db").absolutePath
             val initResult = memoryModule?.callAttr("initialize", dbPath)
-            val resultDict: Map<String, Any?>? = if (initResult is com.chaquo.python.PyObject) initResult.asMap() as? Map<String, Any?> else null
+            val resultDict = (initResult as? com.chaquo.python.PyObject)?.toKMap()
 
             val sessions = resultDict?.get("sessions")?.toString()?.toIntOrNull() ?: 0
             val messages = resultDict?.get("messages")?.toString()?.toIntOrNull() ?: 0
@@ -101,26 +103,26 @@ class AgentService : Service() {
     fun getMemory(): com.chaquo.python.PyObject? = memoryModule
 
     @Suppress("UNCHECKED_CAST")
-    fun sendMessage(message: String, callback: (Map<Any?, Any?>) -> Unit) {
-        if (!isReady()) { callback(mapOf<Any?, Any?>("error" to "Agent not ready: $currentState")); return }
+    fun sendMessage(message: String, callback: (Map<String, Any?>) -> Unit) {
+        if (!isReady()) { callback(mapOf("error" to "Agent not ready: $currentState")); return }
 
         serviceScope.launch {
             try {
                 updateState(STATE_RUNNING)
                 updateNotification("Agent 运行中...")
                 val result = agentLoopModule?.callAttr("run_agent", message)
-                val resultMap: Map<Any?, Any?> = if (result is com.chaquo.python.PyObject) result.asMap() else mapOf<Any?, Any?>("error" to "No result")
+                val resultMap: Map<String, Any?> = (result as? com.chaquo.python.PyObject)?.toKMap() ?: mapOf("error" to "No result")
                 updateState(STATE_READY)
                 withContext(Dispatchers.Main) { callback(resultMap) }
-                val iterations = (resultMap as? Map<String, Any?>)?.get("iterations")?.toString()?.toIntOrNull() ?: 0
-                val tokens = (resultMap as? Map<String, Any?>)?.get("total_tokens")?.toString()?.toIntOrNull() ?: 0
-                val latency = (resultMap as? Map<String, Any?>)?.get("latency_ms")?.toString()?.toIntOrNull() ?: 0
+                val iterations = resultMap["iterations"]?.toString()?.toIntOrNull() ?: 0
+                val tokens = resultMap["total_tokens"]?.toString()?.toIntOrNull() ?: 0
+                val latency = resultMap["latency_ms"]?.toString()?.toIntOrNull() ?: 0
                 updateNotification("Agent 就绪 | ${iterations}轮 | ${tokens}tokens | ${latency}ms")
             } catch (e: Exception) {
                 lastError = e.message
                 updateState(STATE_ERROR)
                 updateNotification("错误: ${e.message}")
-                withContext(Dispatchers.Main) { callback(mapOf<Any?, Any?>("error" to e.message)) }
+                withContext(Dispatchers.Main) { callback(mapOf("error" to (e.message ?: "Unknown error"))) }
             }
         }
     }

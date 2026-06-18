@@ -16,10 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chaquo.python.Python
+import com.hermes.agent.data.ChaquopyBridge.toKMap
+import com.hermes.agent.data.ChaquopyBridge.toKList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-private fun Any.toStrMap(): Map<String, Any?> = (this as com.chaquo.python.PyObject).asMap() as Map<String, Any?>
 
 
 

@@ -23,6 +23,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.chaquo.python.Python
+import com.hermes.agent.data.ChaquopyBridge.toKMap
+import com.hermes.agent.data.ChaquopyBridge.toKList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -136,7 +138,7 @@ fun ChatScreen() {
                         history.callAttr("append", dict)
                     }
                     @Suppress("UNCHECKED_CAST")
-                    (agentLoop.callAttr("run_agent", text, history) as com.chaquo.python.PyObject).asMap() as Map<Any?, Any?>
+                    (agentLoop.callAttr("run_agent", text, history) as com.chaquo.python.PyObject).toKMap()
                 }
 
                 val response = result["response"]?.toString() ?: ""
@@ -147,8 +149,8 @@ fun ChatScreen() {
                 val error = result["error"]?.toString()
 
                 if (toolCalls != null) {
-                    for (tc in (toolCalls as com.chaquo.python.PyObject).asList()) {
-                        val tcMap: Map<Any?, Any?> = (tc as com.chaquo.python.PyObject).asMap()
+                    for (tc in (toolCalls as com.chaquo.python.PyObject).toKList()) {
+                        val tcMap = tc as? Map<String, Any?> ?: emptyMap()
                         val name = tcMap["name"]?.toString() ?: "unknown"
                         messages.add(ChatMessage("tool", "🔧 $name", toolName = name))
                     }
