@@ -19,6 +19,7 @@ import androidx.navigation.compose.rememberNavController
 import com.hermes.agent.data.SettingsManager
 import com.hermes.agent.navigation.Screen
 import com.hermes.agent.ui.ChatScreen
+import com.hermes.agent.ui.WorkflowScreen
 import com.hermes.agent.ui.SkillsScreen
 import com.hermes.agent.ui.MemoryScreen
 import com.hermes.agent.ui.SettingsScreen
@@ -108,6 +109,7 @@ fun HermesAppContent() {
     ) { innerPadding ->
         NavHost(navController = navController, startDestination = Screen.Chat.route, modifier = Modifier.padding(innerPadding)) {
             composable(Screen.Chat.route) { ChatScreen() }
+            composable(Screen.Workflow.route) { WorkflowScreen() }
             composable(Screen.Skills.route) { SkillsScreen() }
             composable(Screen.Memory.route) { MemoryScreen() }
             composable(Screen.Settings.route) { SettingsScreen(onNavigateToProviders = { navController.navigate("providers") }) }
