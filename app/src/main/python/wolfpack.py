@@ -1,21 +1,22 @@
 """
 Hermes Android Wolfpack — multi-agent concurrent task execution.
 
-Splits a large task into subtasks, dispatches each to a sub-agent
-running concurrently, then aggregates results.
-
-Concurrency is bounded by a configurable max (default 3) to avoid OOM
-on mobile. Each sub-agent uses the same provider but independent
-conversation context.
+Real-time event emission via a shared queue.Queue so Kotlin can render
+each phase (split / subtask start / subtask done / aggregate) as it happens.
 """
 import json
 import time
+import queue
+import threading
 import concurrent.futures
-from typing import Any, Optional, Callable
+from typing import Optional, Callable
 import openai
 
 _config: dict = {}
 _client: Optional[openai.OpenAI] = None
+
+_event_queue: Optional[queue.Queue] = None
+_run_done = threading.Event()
 
 
 def configure(base_url: str, api_key: str, model: str = "",
@@ -32,22 +33,48 @@ def configure(base_url: str, api_key: str, model: str = "",
     return _config
 
 
+def drain_events(timeout_ms: int = 200) -> list:
+    """Poll pending events. Returns list of event dicts."""
+    global _event_queue
+    if _event_queue is None:
+        return []
+    events = []
+    deadline = time.time() + timeout_ms / 1000.0
+    while time.time() < deadline:
+        try:
+            evt = _event_queue.get_nowait()
+            events.append(evt)
+            if evt.get("type") == "done":
+                break
+        except queue.Empty:
+            time.sleep(0.02)
+            break
+    return events
+
+
+def is_running() -> bool:
+    return _event_queue is not None and not _run_done.is_set()
+
+
+def _emit(evt: dict):
+    global _event_queue
+    if _event_queue is not None:
+        _event_queue.put(evt)
+
+
 SPLITTER_SYSTEM = """You are a task decomposition agent.
-Given a large task, break it into independent subtasks that can be
-executed concurrently. Respond in JSON:
-{"subtasks": [{"id": "1", "name": "...", "description": "..."}, ...]}
-Keep subtasks independent and parallelizable. 2-6 subtasks is ideal."""
+Break the given task into 2-6 independent parallelizable subtasks.
+Respond in JSON: {"subtasks": [{"id": "1", "name": "...", "description": "..."}, ...]}"""
 
 AGGREGATOR_SYSTEM = """You are a result aggregation agent.
 Given multiple sub-agent results, combine them into a coherent final answer.
-Acknowledge each subtask's contribution. Be concise."""
+Be concise."""
 
-SUBAGENT_SYSTEM = """You are a focused sub-agent working on a specific subtask.
-Be thorough but concise. Complete your subtask fully."""
+SUBAGENT_SYSTEM = """You are a focused sub-agent. Complete your specific subtask fully and concisely."""
 
 
 def _run_subagent(subtask: dict) -> dict:
-    """Run a single sub-agent on a subtask."""
+    """Run a single sub-agent synchronously; emits events."""
     if not _client:
         return {"id": subtask.get("id", ""), "name": subtask.get("name", ""),
                 "result": "", "error": "Not configured", "tokens": 0}
@@ -69,42 +96,66 @@ def _run_subagent(subtask: dict) -> dict:
                 total_tokens += resp.usage.total_tokens
             msg = resp.choices[0].message
             if not msg.tool_calls:
-                return {
+                result = {
                     "id": subtask.get("id", ""), "name": subtask.get("name", ""),
                     "result": msg.content or "", "tokens": total_tokens,
                     "latency_ms": int((time.time() - start) * 1000), "error": None,
                 }
+                _emit({"type": "subtask_done", "subtask_id": subtask.get("id", ""),
+                       "name": subtask.get("name", ""), "result": (msg.content or "")[:200],
+                       "tokens": total_tokens})
+                return result
             messages.append({"role": "assistant", "content": msg.content, "tool_calls": [
-                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                {"id": tc.id, "type": "function",
+                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
                 for tc in msg.tool_calls]})
             for tc in msg.tool_calls:
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": "[stub]"})
-        return {"id": subtask.get("id", ""), "name": subtask.get("name", ""),
-                "result": "[max iterations]", "tokens": total_tokens,
-                "latency_ms": int((time.time() - start) * 1000), "error": "max_iterations"}
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": "[tool_result]"})
+        result = {"id": subtask.get("id", ""), "name": subtask.get("name", ""),
+                  "result": "[max iterations reached]", "tokens": total_tokens,
+                  "latency_ms": int((time.time() - start) * 1000), "error": "max_iterations"}
+        _emit({"type": "subtask_done", "subtask_id": subtask.get("id", ""),
+               "name": subtask.get("name", ""), "result": "[max iterations]", "tokens": total_tokens})
+        return result
     except Exception as e:
+        err = f"{type(e).__name__}: {e}"
+        _emit({"type": "subtask_error", "subtask_id": subtask.get("id", ""),
+               "name": subtask.get("name", ""), "error": err})
         return {"id": subtask.get("id", ""), "name": subtask.get("name", ""),
                 "result": "", "tokens": total_tokens,
-                "latency_ms": int((time.time() - start) * 1000), "error": f"{type(e).__name__}: {e}"}
+                "latency_ms": int((time.time() - start) * 1000), "error": err}
 
 
-def run_wolfpack(task: str, on_split: Callable = None, on_subtask_start: Callable = None,
-                  on_subtask_done: Callable = None, on_aggregate: Callable = None) -> dict:
-    """Run the wolfpack multi-agent system.
-    
-    Returns:
-        {"task": str, "subtasks": list, "results": list, "aggregated": str,
-         "total_tokens": int, "latency_ms": int, "concurrency": int, "error": str|None}
-    """
+def run_wolfpack_async(task: str) -> None:
+    """Start wolfpack in background thread, emitting events to queue."""
+    global _event_queue, _run_done
+    _event_queue = queue.Queue()
+    _run_done = threading.Event()
+
+    def _run():
+        result = run_wolfpack(task)
+        _emit({"type": "done", "result": result})
+        _run_done.set()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+
+def run_wolfpack(task: str) -> dict:
+    """Run wolfpack synchronously, emitting events throughout."""
     if not _client:
+        _emit({"type": "error", "message": "Not configured"})
         return {"task": task, "subtasks": [], "results": [], "aggregated": "",
                 "total_tokens": 0, "latency_ms": 0, "concurrency": 0, "error": "Not configured"}
 
     start = time.time()
     total_tokens = 0
 
-    # Phase 1: Split task
+    _emit({"type": "start", "task": task})
+
+    # Phase 1: Split
     try:
+        _emit({"type": "splitting", "task": task})
         split_resp = _client.chat.completions.create(
             model=_config["model"],
             messages=[
@@ -127,38 +178,38 @@ def run_wolfpack(task: str, on_split: Callable = None, on_subtask_start: Callabl
         if not subtasks:
             subtasks = [{"id": "1", "name": "main", "description": task}]
 
-        if on_split:
-            on_split(subtasks)
+        _emit({"type": "split_done", "subtasks": [
+            {"id": s.get("id", ""), "name": s.get("name", "")} for s in subtasks
+        ]})
 
     except Exception as e:
+        err = f"Split failed: {e}"
+        _emit({"type": "error", "message": err})
         return {"task": task, "subtasks": [], "results": [], "aggregated": "",
                 "total_tokens": total_tokens, "latency_ms": int((time.time() - start) * 1000),
-                "concurrency": 0, "error": f"Split failed: {e}"}
+                "concurrency": 0, "error": err}
 
     # Phase 2: Run sub-agents concurrently
+    for st in subtasks:
+        _emit({"type": "subtask_start", "subtask_id": st.get("id", ""), "name": st.get("name", ""),
+               "description": st.get("description", "")[:200]})
+
     results = []
     max_workers = min(_config["max_concurrency"], len(subtasks))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {}
-        for st in subtasks:
-            if on_subtask_start:
-                on_subtask_start(st)
-            futures[pool.submit(_run_subagent, st)] = st
-
+        futures = {pool.submit(_run_subagent, st): st for st in subtasks}
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
             results.append(result)
             total_tokens += result.get("tokens", 0)
-            if on_subtask_done:
-                on_subtask_done(result)
 
-    # Sort results by id
     results.sort(key=lambda r: r.get("id", ""))
 
     # Phase 3: Aggregate
     aggregated = ""
     try:
+        _emit({"type": "aggregating"})
         results_text = "\n\n".join([
             f"[Subtask {r['id']}: {r['name']}]\n{r.get('result', '')}"
             for r in results
@@ -174,10 +225,10 @@ def run_wolfpack(task: str, on_split: Callable = None, on_subtask_start: Callabl
         if agg_resp.usage:
             total_tokens += agg_resp.usage.total_tokens
         aggregated = agg_resp.choices[0].message.content or ""
-        if on_aggregate:
-            on_aggregate(aggregated)
+        _emit({"type": "aggregate_done", "summary": aggregated[:300]})
     except Exception as e:
         aggregated = f"[Aggregation failed: {e}]"
+        _emit({"type": "aggregate_error", "error": str(e)})
 
     return {
         "task": task,

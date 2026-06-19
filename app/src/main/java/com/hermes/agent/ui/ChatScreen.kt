@@ -213,7 +213,7 @@ fun ChatScreen() {
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                text = if (providerConfigured) "DeepSeek 已连接" else "正在连接...",
+                                text = if (providerConfigured) "已就绪" else "尚未配置供应商",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

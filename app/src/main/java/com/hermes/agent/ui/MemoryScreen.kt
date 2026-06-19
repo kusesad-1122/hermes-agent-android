@@ -48,6 +48,7 @@ fun MemoryScreen() {
     var sessions by remember { mutableStateOf(listOf<SessionInfo>()) }
     var stats by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
     var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
     // Load data
@@ -91,7 +92,9 @@ fun MemoryScreen() {
                 // Stats
                 val s = (ms.callAttr("get_stats") as com.chaquo.python.PyObject).toKMap()
                 stats = s.entries.associate { (k, v) -> k.toString() to v?.toString() }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                loadError = "${e.javaClass.simpleName}: ${e.message}"
+            }
             isLoading = false
         }
     }
@@ -142,6 +145,21 @@ fun MemoryScreen() {
 
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else if (loadError != null) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text(
+                    text = loadError!!,
+                    modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
         } else when (tab) {
             0 -> MemoryTab(filtered)
             1 -> SessionTab(sessions, searchQuery)
