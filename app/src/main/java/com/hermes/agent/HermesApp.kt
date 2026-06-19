@@ -4,6 +4,10 @@ import android.app.Application
 import android.util.Log
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
+import kotlin.system.exitProcess
 
 class HermesApp : Application() {
 
@@ -13,6 +17,26 @@ class HermesApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Global crash handler — writes full stack trace to file + logcat
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            val sw = StringWriter()
+            val pw = PrintWriter(sw)
+            pw.println("=== Hermes Crash ===")
+            pw.println("Thread: ${thread.name}")
+            pw.println("Time: ${System.currentTimeMillis()}")
+            throwable.printStackTrace(pw)
+            pw.println("=== End ===")
+            val trace = sw.toString()
+            Log.e(TAG, trace)
+            try {
+                val logFile = File(filesDir, "hermes_crash.log")
+                logFile.appendText(trace + "
+
+")
+            } catch (_: Exception) {}
+            exitProcess(1)
+        }
         // 初始化 Chaquopy Python 运行时
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))

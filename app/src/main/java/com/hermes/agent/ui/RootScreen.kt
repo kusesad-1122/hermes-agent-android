@@ -13,6 +13,7 @@ import com.hermes.agent.data.ChaquopyBridge.toKList
 import com.hermes.agent.data.ChaquopyBridge.toKMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,15 +33,22 @@ fun RootScreen() {
             loading = true
             error = null
             try {
-                val py = Python.getInstance()
-                val root = py.getModule("root_gateway")
-                val filesDir = context.filesDir.absolutePath
-                root.callAttr("initialize", "$filesDir/hermes_root_audit.db", "$filesDir/hermes_snapshots")
-                backendInfo = (root.callAttr("get_backend_info") as com.chaquo.python.PyObject).toKMap()
-                modeInfo = (root.callAttr("get_confirmation_mode") as com.chaquo.python.PyObject).toKMap()
-                capabilities = (root.callAttr("get_capabilities") as com.chaquo.python.PyObject).toKMap()
-                stats = (root.callAttr("get_audit_stats") as com.chaquo.python.PyObject).toKMap()
-                audit = (root.callAttr("get_audit_log", 20) as com.chaquo.python.PyObject).toKList().mapNotNull { it as? Map<String, Any?> }
+                // 5 second timeout for root detection — never spin forever
+                val result = withTimeoutOrNull(5000L) {
+                    val py = Python.getInstance()
+                    val root = py.getModule("root_gateway")
+                    val filesDir = context.filesDir.absolutePath
+                    root.callAttr("initialize", "$filesDir/hermes_root_audit.db", "$filesDir/hermes_snapshots")
+                    backendInfo = (root.callAttr("get_backend_info") as com.chaquo.python.PyObject).toKMap()
+                    modeInfo = (root.callAttr("get_confirmation_mode") as com.chaquo.python.PyObject).toKMap()
+                    capabilities = (root.callAttr("get_capabilities") as com.chaquo.python.PyObject).toKMap()
+                    stats = (root.callAttr("get_audit_stats") as com.chaquo.python.PyObject).toKMap()
+                    audit = (root.callAttr("get_audit_log", 20) as com.chaquo.python.PyObject).toKList().mapNotNull { it as? Map<String, Any?> }
+                    true
+                }
+                if (result == null) {
+                    error = "Root 检测超时 (5s)。可能无 Root 或 su 响应过慢。"
+                }
             } catch (e: Exception) {
                 error = e.message ?: e.toString()
             } finally {
