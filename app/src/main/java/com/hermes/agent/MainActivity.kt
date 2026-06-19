@@ -25,6 +25,7 @@ import com.hermes.agent.ui.SettingsScreen
 import com.hermes.agent.ui.ProviderListScreen
 import com.hermes.agent.ui.ProviderEditScreen
 import com.hermes.agent.ui.RootScreen
+import com.hermes.agent.ui.WorkflowScreen
 import com.hermes.agent.ui.theme.HermesTheme
 
 class MainActivity : ComponentActivity() {
@@ -116,6 +117,7 @@ fun HermesAppContent() {
             composable(Screen.Chat.route) { ChatScreen() }
             composable(Screen.Skills.route) { SkillsScreen() }
             composable(Screen.Memory.route) { MemoryScreen() }
+            composable(Screen.Workflow.route) { WorkflowScreen() }
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     onNavigateToProviders = { navController.navigate("providers") },

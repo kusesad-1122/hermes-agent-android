@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.chaquo.python.Python
 import com.hermes.agent.data.ChaquopyBridge.toKMap
@@ -24,6 +26,13 @@ import com.hermes.agent.data.ChaquopyBridge.toKList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+
+data class McpServerItem(
+    val name: String,
+    val url: String,
+    val connected: Boolean,
+    val toolCount: Int,
+)
 data class SkillItem(
     val name: String,
     val description: String,
@@ -57,6 +66,14 @@ fun SkillsScreen() {
     var showCreateDialog by remember { mutableStateOf(false) }
     var banner by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var selectedTab by remember { mutableIntStateOf(0) } // 0=Skills, 1=MCP
+    var mcpServers by remember { mutableStateOf(listOf<McpServerItem>()) }
+    var mcpLoading by remember { mutableStateOf(false) }
+    var mcpError by remember { mutableStateOf<String?>(null) }
+    var mcpBanner by remember { mutableStateOf<String?>(null) }
+    var showAddMcpDialog by remember { mutableStateOf(false) }
+    var mcpServerUrl by remember { mutableStateOf("") }
+    var mcpServerName by remember { mutableStateOf("") }
 
     fun loadSkills() {
         scope.launch(Dispatchers.IO) {
@@ -79,6 +96,33 @@ fun SkillsScreen() {
         }
     }
 
+
+    fun loadMcpServers() {
+        scope.launch(Dispatchers.IO) {
+            mcpLoading = true
+            mcpError = null
+            mcpBanner = null
+            try {
+                val py = Python.getInstance()
+                val mcp = py.getModule("mcp_client")
+                mcp.callAttr("initialize")
+                val list = (mcp.callAttr("list_servers") as com.chaquo.python.PyObject).toKList()
+                mcpServers = list.mapNotNull { item ->
+                    val m = item as? Map<String, Any?> ?: return@mapNotNull null
+                    McpServerItem(
+                        name = m["name"]?.toString() ?: "",
+                        url = m["url"]?.toString() ?: "",
+                        connected = m["connected"] == true,
+                        toolCount = try { (m["tools"] as? List<*>)?.size ?: 0 } catch (_: Exception) { 0 }
+                    )
+                }
+                mcpBanner = "MCP: ${mcpServers.size} 个服务器"
+            } catch (e: Exception) {
+                mcpError = e.message ?: e.toString()
+            }
+            mcpLoading = false
+        }
+    }
     LaunchedEffect(Unit) { loadSkills() }
 
     LaunchedEffect(selectedSkill) {
@@ -159,6 +203,26 @@ fun SkillsScreen() {
             }
         }
 
+        // Tab switcher: Skills / MCP
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                label = { Text("Skills") }
+            )
+            FilterChip(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1; loadMcpServers() },
+                label = { Text("MCP") }
+            )
+        }
+
+        if (selectedTab == 0) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
@@ -196,6 +260,66 @@ fun SkillsScreen() {
                 }
             }
         }
+        } // end if selectedTab == 0
+
+        if (selectedTab == 1) {
+            mcpBanner?.let {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(it, modifier = Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                }
+            }
+            mcpError?.let {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(it, modifier = Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                }
+            }
+            if (mcpLoading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            } else if (mcpServers.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("暂无 MCP 服务器", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(8.dp))
+                        Text("点击 + 添加 MCP 服务器", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(mcpServers) { server ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(server.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.weight(1f))
+                                    if (server.connected) {
+                                        Icon(Icons.Default.Check, contentDescription = "已连接", tint = Color(0xFF059669), modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(server.url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                Text("工具数: ${server.toolCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        } // end if selectedTab == 1
     }
 
     selectedSkill?.let { skill ->

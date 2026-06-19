@@ -32,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hermes.agent.data.ChatStore
 import com.hermes.agent.data.SettingsManager
+import com.hermes.agent.data.ChaquopyBridge.toKMap
+import com.hermes.agent.data.ChaquopyBridge.toKList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -213,7 +215,7 @@ fun WorkflowScreen() {
                                             gl.callAttr("configure", baseUrl, apiKey, model)
                                             val result = gl.callAttr("run_goal", goalInput)
                                             @Suppress("UNCHECKED_CAST")
-                                            val resultMap = (result as com.chaquo.python.PyObject).asMap() as Map<String, Any?>
+                                            val resultMap = (result as com.chaquo.python.PyObject).toKMap()
                                             val achieved = resultMap["achieved"]?.toString()?.toBoolean() ?: false
                                             val iterations = resultMap["iterations"]?.toString()?.toIntOrNull() ?: 0
                                             val tokens = resultMap["total_tokens"]?.toString()?.toIntOrNull() ?: 0
@@ -234,7 +236,7 @@ fun WorkflowScreen() {
                                             wp.callAttr("configure", baseUrl, apiKey, model)
                                             val result = wp.callAttr("run_wolfpack", goalInput)
                                             @Suppress("UNCHECKED_CAST")
-                                            val resultMap = (result as com.chaquo.python.PyObject).asMap() as Map<String, Any?>
+                                            val resultMap = (result as com.chaquo.python.PyObject).toKMap()
                                             val subtasks = resultMap["subtasks"] as? List<*>
                                             subtasks?.forEachIndexed { i, s ->
                                                 val sm = s as? Map<String, Any?> ?: return@forEachIndexed
