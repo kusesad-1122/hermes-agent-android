@@ -66,10 +66,8 @@ fun SkillsScreen() {
             try {
                 val py = Python.getInstance()
                 val se = py.getModule("skills_engine")
-                // Point to Operit skills directory if it exists, else use app internal
-                val operitSkills = "/storage/emulated/0/Download/Operit/skills"
-                val skillsDir = if (java.io.File(operitSkills).exists()) operitSkills
-                    else "${context.filesDir.absolutePath}/hermes_skills"
+                // Hermes uses ~/.hermes/skills/ — on Android, map to app internal hermes directory
+                val skillsDir = "${context.filesDir.absolutePath}/.hermes/skills"
                 se.callAttr("initialize", skillsDir)
                 val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).toKList()
                 skills = list.mapNotNull { item -> val m = item as? Map<String, Any?> ?: return@mapNotNull null; SkillItem(name = m["name"]?.toString() ?: "", description = m["description"]?.toString() ?: "", category = m["category"]?.toString(), tags = try { (m["tags"] as? List<*>)?.map { t -> t.toString() } ?: emptyList() } catch (_: Exception) { emptyList() }, path = m["path"]?.toString() ?: "") }

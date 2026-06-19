@@ -16,7 +16,7 @@ _executor_client: Optional[openai.OpenAI] = None
 _judge_client: Optional[openai.OpenAI] = None
 
 
-def configure(base_url: str, api_key: str, model: str = "deepseek-chat",
+def configure(base_url: str, api_key: str, model: str = "",
                judge_model: str = "", max_iterations: int = 15,
                max_time_seconds: int = 300, max_cost_tokens: int = 100000):
     """Configure the goal loop.

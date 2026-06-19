@@ -24,6 +24,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -62,6 +63,7 @@ data class TaskRecord(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkflowScreen() {
+    val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) } // 0=Live, 1=History
     val liveSteps = remember { mutableStateListOf<WorkflowStep>() }
     var currentStatus by remember { mutableStateOf("idle") }
@@ -200,9 +202,11 @@ fun WorkflowScreen() {
                                 withContext(Dispatchers.IO) {
                                     try {
                                         val py = com.chaquo.python.Python.getInstance()
-                                        val apiKey = SettingsManager.getSecureString("deepseek_api_key") ?: ""
-                                        val model = SettingsManager.model.value
-                                        val baseUrl = "https://api.deepseek.com/v1"
+                                        val storage = com.hermes.agent.data.ProviderStorage(context)
+                                        val provider = storage.getDefaultProvider()
+                                        val apiKey = provider?.let { storage.getApiKey(it.id) } ?: ""
+                                        val model = provider?.defaultModel ?: provider?.models?.firstOrNull() ?: ""
+                                        val baseUrl = provider?.baseUrl ?: ""
 
                                         if (mode == "goal") {
                                             val gl = py.getModule("goal_loop")

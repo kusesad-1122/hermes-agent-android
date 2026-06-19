@@ -75,8 +75,17 @@ class AgentService : Service() {
             val py = Python.getInstance()
 
             agentLoopModule = py.getModule("agent_loop")
-            agentLoopModule?.callAttr("configure", "https://api.deepseek.com/v1",
-                "sk-06a0fc1cc4f94aebb808b0286c8fc2f9", "deepseek-chat", 10, 4096, 0.7)
+            // Read provider config from ProviderStorage (no hardcoded keys)
+            val storage = com.hermes.agent.data.ProviderStorage(this)
+            val provider = storage.getDefaultProvider()
+            if (provider != null) {
+                val apiKey = storage.getApiKey(provider.id)
+                val model = if (provider.defaultModel.isNotBlank()) provider.defaultModel
+                    else provider.models.firstOrNull() ?: ""
+                agentLoopModule?.callAttr("configure", provider.baseUrl, apiKey, model, 10, 4096, 0.7)
+            } else {
+                throw RuntimeException("No provider configured. Add one in Settings → Providers.")
+            }
 
             memoryModule = py.getModule("memory_system")
             val dbPath = getDatabasePath("hermes_memory.db").absolutePath

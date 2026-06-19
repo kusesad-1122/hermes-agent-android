@@ -97,7 +97,7 @@ fun ChatScreen() {
             if (provider != null) {
                 val apiKey = storage.getApiKey(provider.id)
                 val model = if (provider.defaultModel.isNotBlank()) provider.defaultModel
-                    else provider.models.firstOrNull() ?: "deepseek-chat"
+                    else provider.models.firstOrNull() ?: ""
                 val py = Python.getInstance()
                 val agentLoop = py.getModule("agent_loop")
                 agentLoop.callAttr(

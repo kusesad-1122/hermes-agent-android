@@ -22,9 +22,9 @@ import openai
 
 # Default provider config (overridden by Kotlin bridge)
 _DEFAULT_CONFIG = {
-    "base_url": "https://api.deepseek.com/v1",
+    "base_url": "",
     "api_key": "",
-    "model": "deepseek-chat",
+    "model": "",
     "max_iterations": 10,
     "max_tokens": 4096,
     "temperature": 0.7,

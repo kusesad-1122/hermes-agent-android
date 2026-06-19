@@ -47,7 +47,7 @@ object SettingsManager {
     private val _activeProvider = MutableStateFlow("")
     val activeProvider: StateFlow<String> = _activeProvider.asStateFlow()
 
-    private val _model = MutableStateFlow("deepseek-chat")
+    private val _model = MutableStateFlow("")
     val model: StateFlow<String> = _model.asStateFlow()
 
     private val _temperature = MutableStateFlow(DEFAULT_TEMPERATURE)
@@ -97,7 +97,7 @@ object SettingsManager {
 
         // 加载所有值到 StateFlows
         _activeProvider.value = prefs.getString(KEY_ACTIVE_PROVIDER, "") ?: ""
-        _model.value = prefs.getString(KEY_MODEL, "deepseek-chat") ?: "deepseek-chat"
+        _model.value = prefs.getString(KEY_MODEL, "") ?: ""
         _temperature.value = prefs.getFloat(KEY_TEMPERATURE, DEFAULT_TEMPERATURE)
         _maxTokens.value = prefs.getInt(KEY_MAX_TOKENS, DEFAULT_MAX_TOKENS)
         _maxIterations.value = prefs.getInt(KEY_MAX_ITERATIONS, DEFAULT_MAX_ITERATIONS)
@@ -200,7 +200,7 @@ object SettingsManager {
     fun resetToDefaults() {
         prefs.edit().clear().apply()
         _activeProvider.value = ""
-        _model.value = "deepseek-chat"
+        _model.value = ""
         _temperature.value = DEFAULT_TEMPERATURE
         _maxTokens.value = DEFAULT_MAX_TOKENS
         _maxIterations.value = DEFAULT_MAX_ITERATIONS

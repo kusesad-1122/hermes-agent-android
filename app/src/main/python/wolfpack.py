@@ -18,7 +18,7 @@ _config: dict = {}
 _client: Optional[openai.OpenAI] = None
 
 
-def configure(base_url: str, api_key: str, model: str = "deepseek-chat",
+def configure(base_url: str, api_key: str, model: str = "",
                max_concurrency: int = 3, max_iterations: int = 5):
     global _config, _client
     _config = {
