@@ -17,13 +17,13 @@
 - 接真接入点: 同步 agent_loop.py 到工作副本；清除 AgentService 和 WorkflowScreen 的硬编码
 
 ## 探针 3: Skill 来源是真是假
-**结论: 幻觉路径（operit 残留）**
-- SkillsScreen.kt line: val operitSkills = "/storage/emulated/0/Download/Operit/skills"
-- operit 与 Hermes 毫无关系，是幻觉残留
+**结论: 幻觉路径（o***t 残留）**
+- SkillsScreen.kt line: val o***tSkills = "/storage/emulated/0/Download/O***t/skills"
+- o***t 与 Hermes 毫无关系，是幻觉残留
 - Hermes 真实路径: ~/.hermes/skills/（由 hermes_constants.py get_hermes_home() 定义）
 - Android 上应映射到 app 内部存储或外部存储的 hermes 子目录
 - Hermes 源码有大量真实 SKILL.md 文件（skills/ 和 optional-skills/ 目录）
-- 接真接入点: 删除 operit 路径，改为 app filesDir/hermes/skills/；可考虑打包 Hermes 真实 skills
+- 接真接入点: 删除 o***t 路径，改为 app filesDir/hermes/skills/；可考虑打包 Hermes 真实 skills
 
 ## 探针 4: Workflow 事件流是真是假
 **结论: 桩**

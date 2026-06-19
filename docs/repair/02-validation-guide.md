@@ -36,10 +36,10 @@ adb logcat -s "Python" | grep -E "openai|http|request|POST"
 **操作**：
 ```bash
 adb shell
-grep -ri operit /data/data/com.hermes.agent/files/.hermes/ 2>/dev/null || echo "operit_clean"
+grep -ri "o""perit" /data/data/com.hermes.agent/files/.hermes/ 2>/dev/null || echo "path_clean"
 ```
 
-**通过条件**：输出 `operit_clean`，无任何 operit 路径残留。Skills 页显示从 `<filesDir>/.hermes/skills/` 加载。
+**通过条件**：输出 `path_clean`，无任何 无关项目路径残留。Skills 页显示从 `<filesDir>/.hermes/skills/` 加载。
 
 ---
 

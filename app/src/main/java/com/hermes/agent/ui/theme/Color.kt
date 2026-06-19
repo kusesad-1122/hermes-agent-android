@@ -28,10 +28,10 @@ val Error = Color(0xFFDC2626)
 val Info = Color(0xFF2563EB)
 
 // ── WCAG AA 对比度校验 ──
-// OnBackground #111827 on Background #FFFFFF → 16.75:1 ✅ (≥4.5:1)
-// OnSurface #111827 on Surface #F9FAFB → 15.38:1 ✅
-// OnPrimary #FFFFFF on Primary #4F46E5 → 5.23:1 ✅
-// OnPrimaryContainer #3730A3 on PrimaryContainer #EEF2FF → 7.89:1 ✅
-// OnSurfaceVariant #6B7280 on Surface #F9FAFB → 4.63:1 ✅
-// OnSurfaceVariant #6B7280 on SurfaceVariant #F3F4F6 → 4.14:1 ⚠️ 仅大字/非关键
-// Error #DC2626 on Background #FFFFFF → 5.12:1 ✅
+// OnBackground #111827 on Background #FFFFFF -> 16.75:1  (≥4.5:1)
+// OnSurface #111827 on Surface #F9FAFB -> 15.38:1 
+// OnPrimary #FFFFFF on Primary #4F46E5 -> 5.23:1 
+// OnPrimaryContainer #3730A3 on PrimaryContainer #EEF2FF -> 7.89:1 
+// OnSurfaceVariant #6B7280 on Surface #F9FAFB -> 4.63:1 
+// OnSurfaceVariant #6B7280 on SurfaceVariant #F3F4F6 -> 4.14:1 (仅大字/非关键)
+// Error #DC2626 on Background #FFFFFF -> 5.12:1 
