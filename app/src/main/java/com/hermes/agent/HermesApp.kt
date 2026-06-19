@@ -10,7 +10,6 @@ import java.io.StringWriter
 import kotlin.system.exitProcess
 
 class HermesApp : Application() {
-
     companion object {
         private const val TAG = "HermesApp"
     }
@@ -23,39 +22,34 @@ class HermesApp : Application() {
             val sw = StringWriter()
             val pw = PrintWriter(sw)
             pw.println("=== Hermes Crash ===")
-            pw.println("Thread: ${thread.name}")
-            pw.println("Time: ${System.currentTimeMillis()}")
+            pw.println("Thread: " + thread.name)
+            pw.println("Time: " + System.currentTimeMillis())
             throwable.printStackTrace(pw)
             pw.println("=== End ===")
             val trace = sw.toString()
             Log.e(TAG, trace)
             try {
                 val logFile = File(filesDir, "hermes_crash.log")
-                logFile.appendText(trace + "
-
-")
+                logFile.appendText(trace + "\n\n")
             } catch (_: Exception) {}
             exitProcess(1)
         }
-        // 初始化 Chaquopy Python 运行时
+
+        // Initialize Chaquopy Python runtime
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
         }
 
-        // 测试 Python 桥接
         try {
             val py = Python.getInstance()
             val bridge = py.getModule("hermes_bridge")
             val version = bridge.callAttr("get_version").toString()
             Log.i(TAG, "Hermes version: $version")
-
             val info = bridge.callAttr("get_python_info").asMap()
             Log.i(TAG, "Python info: $info")
-
-            // Test core imports
             val imports = bridge.callAttr("test_imports").asMap()
             for ((mod, result) in imports) {
-                val status = if (result.toString() == "OK") "✅" else "❌"
+                val status = if (result.toString() == "OK") "ok" else "fail"
                 Log.i(TAG, "  $status $mod: $result")
             }
         } catch (e: Exception) {
