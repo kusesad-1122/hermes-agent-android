@@ -72,8 +72,6 @@ fun SkillsScreen() {
     var mcpError by remember { mutableStateOf<String?>(null) }
     var mcpBanner by remember { mutableStateOf<String?>(null) }
     var showAddMcpDialog by remember { mutableStateOf(false) }
-    var mcpServerUrl by remember { mutableStateOf("") }
-    var mcpServerName by remember { mutableStateOf("") }
 
     fun loadSkills() {
         scope.launch(Dispatchers.IO) {
@@ -83,11 +81,19 @@ fun SkillsScreen() {
             try {
                 val py = Python.getInstance()
                 val se = py.getModule("skills_engine")
-                // Hermes uses ~/.hermes/skills/ — on Android, map to app internal hermes directory
                 val skillsDir = "${context.filesDir.absolutePath}/.hermes/skills"
                 se.callAttr("initialize", skillsDir)
                 val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).toKList()
-                skills = list.mapNotNull { item -> val m = item as? Map<String, Any?> ?: return@mapNotNull null; SkillItem(name = m["name"]?.toString() ?: "", description = m["description"]?.toString() ?: "", category = m["category"]?.toString(), tags = try { (m["tags"] as? List<*>)?.map { t -> t.toString() } ?: emptyList() } catch (_: Exception) { emptyList() }, path = m["path"]?.toString() ?: "") }
+                skills = list.mapNotNull { item ->
+                    val m = item as? Map<String, Any?> ?: return@mapNotNull null
+                    SkillItem(
+                        name = m["name"]?.toString() ?: "",
+                        description = m["description"]?.toString() ?: "",
+                        category = m["category"]?.toString(),
+                        tags = try { (m["tags"] as? List<*>)?.map { t -> t.toString() } ?: emptyList() } catch (_: Exception) { emptyList() },
+                        path = m["path"]?.toString() ?: ""
+                    )
+                }
                 banner = "已加载 ${skills.size} 个技能 (从 $skillsDir)"
             } catch (e: Exception) {
                 error = e.message ?: e.toString()
@@ -95,7 +101,6 @@ fun SkillsScreen() {
             isLoading = false
         }
     }
-
 
     fun loadMcpServers() {
         scope.launch(Dispatchers.IO) {
@@ -123,30 +128,11 @@ fun SkillsScreen() {
             mcpLoading = false
         }
     }
+
     LaunchedEffect(Unit) { loadSkills() }
 
     LaunchedEffect(selectedSkill) {
-    
-    if (showAddMcpDialog) {
-        AddMcpDialog(
-            onDismiss = { showAddMcpDialog = false },
-            onAdd = { name, url ->
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        val py = Python.getInstance()
-                        val mcp = py.getModule("mcp_client")
-                        mcp.callAttr("add_server", name, url)
-                        mcp.callAttr("connect_server", name)
-                        loadMcpServers()
-                    } catch (e: Exception) {
-                        mcpError = e.message ?: e.toString()
-                    }
-                }
-                showAddMcpDialog = false
-            }
-        )
-    }
-    selectedSkill?.let { skill ->
+        selectedSkill?.let { skill ->
             scope.launch(Dispatchers.IO) {
                 try {
                     val py = Python.getInstance()
@@ -167,6 +153,7 @@ fun SkillsScreen() {
         it.tags.any { tag -> tag.contains(searchQuery, true) }
     }
 
+    // Dialogs — hoisted to Composable scope top level
     if (showCreateDialog) {
         CreateSkillDialog(
             onDismiss = { showCreateDialog = false },
@@ -177,12 +164,68 @@ fun SkillsScreen() {
                         val se = py.getModule("skills_engine")
                         se.callAttr("create_skill", name, desc, content, category)
                         val list = (se.callAttr("list_skills") as com.chaquo.python.PyObject).toKList()
-                        skills = list.mapNotNull { item -> val m = item as? Map<String, Any?> ?: return@mapNotNull null; SkillItem(name = m["name"]?.toString() ?: "", description = m["description"]?.toString() ?: "", category = m["category"]?.toString(), tags = try { (m["tags"] as? List<*>)?.map { t -> t.toString() } ?: emptyList() } catch (_: Exception) { emptyList() }, path = m["path"]?.toString() ?: "") }
+                        skills = list.mapNotNull { item ->
+                            val m = item as? Map<String, Any?> ?: return@mapNotNull null
+                            SkillItem(
+                                name = m["name"]?.toString() ?: "",
+                                description = m["description"]?.toString() ?: "",
+                                category = m["category"]?.toString(),
+                                tags = try { (m["tags"] as? List<*>)?.map { t -> t.toString() } ?: emptyList() } catch (_: Exception) { emptyList() },
+                                path = m["path"]?.toString() ?: ""
+                            )
+                        }
                     } catch (_: Exception) {}
                 }
                 showCreateDialog = false
             }
         )
+    }
+
+    if (showAddMcpDialog) {
+        AddMcpDialog(
+            onDismiss = { showAddMcpDialog = false },
+            onAdd = { name, url ->
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val py = Python.getInstance()
+                        val mcp = py.getModule("mcp_client")
+                        mcp.callAttr("add_server", name, url)
+                        mcp.callAttr("connect_server", name)
+                        loadMcpServers()
+                    } catch (e: Exception) {
+                        mcpError = e.message ?: e.toString()
+                    }
+                }
+                showAddMcpDialog = false
+            }
+        )
+    }
+
+    selectedSkill?.let { skill ->
+        if (skillContent.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { selectedSkill = null; skillContent = "" },
+                title = { Text(skill.name) },
+                text = {
+                    Column {
+                        Text(skill.description, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(8.dp))
+                        if (skill.tags.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                skill.tags.forEach { tag ->
+                                    SuggestionChip(onClick = {}, label = { Text(tag, style = MaterialTheme.typography.labelSmall) })
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        Text(skillContent, style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { selectedSkill = null; skillContent = "" }) { Text("关闭") }
+                }
+            )
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -246,43 +289,43 @@ fun SkillsScreen() {
         }
 
         if (selectedTab == 0) {
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("搜索 Skills...") },
-            leadingIcon = { Icon(Icons.Outlined.Search, null) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp)
-        )
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("搜索 Skills...") },
+                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
 
-        if (isLoading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else if (filtered.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("暂无 Skills", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
-                    Text("点击 + 创建新 Skill", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (isLoading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(filtered) { skill ->
-                    SkillCard(skill, isSelected = selectedSkill?.name == skill.name) {
-                        selectedSkill = if (selectedSkill?.name == skill.name) null else skill
+            } else if (filtered.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("暂无 Skills", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(8.dp))
+                        Text("点击 + 创建新 Skill", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filtered) { skill ->
+                        SkillCard(skill, isSelected = selectedSkill?.name == skill.name) {
+                            selectedSkill = if (selectedSkill?.name == skill.name) null else skill
+                        }
                     }
                 }
             }
-        }
         } // end if selectedTab == 0
 
         if (selectedTab == 1) {
@@ -321,76 +364,85 @@ fun SkillsScreen() {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(mcpServers) { server ->
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(server.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Spacer(Modifier.weight(1f))
-                                    if (server.connected) {
-                                        Icon(Icons.Default.Check, contentDescription = "已连接", tint = Color(0xFF059669), modifier = Modifier.size(20.dp))
+                        McpServerCard(
+                            server = server,
+                            onConnect = {
+                                scope.launch(Dispatchers.IO) {
+                                    try {
+                                        val py = Python.getInstance()
+                                        val mcp = py.getModule("mcp_client")
+                                        mcp.callAttr("connect_server", server.name)
+                                        loadMcpServers()
+                                    } catch (e: Exception) {
+                                        mcpError = e.message ?: e.toString()
                                     }
                                 }
-                                Spacer(Modifier.height(4.dp))
-                                Text(server.url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                                Text("工具数: ${server.toolCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                        }
+                        )
                     }
                 }
             }
         } // end if selectedTab == 1
     }
+}
 
-
-    if (showAddMcpDialog) {
-        AddMcpDialog(
-            onDismiss = { showAddMcpDialog = false },
-            onAdd = { name, url ->
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        val py = Python.getInstance()
-                        val mcp = py.getModule("mcp_client")
-                        mcp.callAttr("add_server", name, url)
-                        mcp.callAttr("connect_server", name)
-                        loadMcpServers()
-                    } catch (e: Exception) {
-                        mcpError = e.message ?: e.toString()
-                    }
+@Composable
+fun McpServerCard(server: McpServerItem, onConnect: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(server.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                if (server.connected) {
+                    Icon(Icons.Default.Check, contentDescription = "已连接", tint = Color(0xFF059669), modifier = Modifier.size(20.dp))
+                } else {
+                    TextButton(onClick = onConnect) { Text("连接") }
                 }
-                showAddMcpDialog = false
             }
-        )
-    }
-    selectedSkill?.let { skill ->
-        if (skillContent.isNotEmpty()) {
-            AlertDialog(
-                onDismissRequest = { selectedSkill = null; skillContent = "" },
-                title = { Text(skill.name) },
-                text = {
-                    Column {
-                        Text(skill.description, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(8.dp))
-                        if (skill.tags.isNotEmpty()) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                skill.tags.forEach { tag ->
-                                    SuggestionChip(onClick = {}, label = { Text(tag, style = MaterialTheme.typography.labelSmall) })
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                        }
-                        Text(skillContent, style = MaterialTheme.typography.bodySmall)
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { selectedSkill = null; skillContent = "" }) { Text("关闭") }
-                }
-            )
+            Spacer(Modifier.height(4.dp))
+            Text(server.url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("工具数: ${server.toolCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+fun AddMcpDialog(onDismiss: () -> Unit, onAdd: (String, String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("添加 MCP 服务器") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("URL (如 http://localhost:8080)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (name.isNotBlank() && url.isNotBlank()) onAdd(name, url) },
+                enabled = name.isNotBlank() && url.isNotBlank()
+            ) { Text("添加") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
 }
 
 @Composable
