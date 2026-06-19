@@ -66,7 +66,7 @@ fun ChatScreen() {
                 isListening = false
             }
         } else {
-            messages.add(ChatMessage("system", "⚠️ 需要录音权限才能使用语音输入"))
+            messages.add(ChatMessage("system", "[WARN] 需要录音权限才能使用语音输入"))
         }
     }
 
@@ -86,7 +86,7 @@ fun ChatScreen() {
             isListening = listening
         }
         voiceHelper.onError = { error ->
-            messages.add(ChatMessage("system", "🎤 $error"))
+            messages.add(ChatMessage("system", "[VOICE] $error"))
             isListening = false
         }
         voiceHelper.initialize()
@@ -113,7 +113,7 @@ fun ChatScreen() {
                 messages.add(ChatMessage("system", "Hermes Agent 已就绪 (${provider.name} · $model)"))
             } else {
                 // Fallback: no provider configured yet
-                messages.add(ChatMessage("system", "⚠️ 尚未配置供应商，请到 设置 → 模型供应商 添加"))
+                messages.add(ChatMessage("system", "[WARN] 尚未配置供应商，请到 设置 → 模型供应商 添加"))
             }
         } catch (e: Exception) {
             messages.add(ChatMessage("system", "初始化失败: ${e.message}"))
@@ -163,21 +163,21 @@ fun ChatScreen() {
                     for (tc in (toolCalls as com.chaquo.python.PyObject).toKList()) {
                         val tcMap = tc as? Map<String, Any?> ?: emptyMap()
                         val name = tcMap["name"]?.toString() ?: "unknown"
-                        messages.add(ChatMessage("tool", "🔧 $name", toolName = name))
+                        messages.add(ChatMessage("tool", "[TOOL] $name", toolName = name))
                     }
                 }
 
                 if (response.isNotEmpty()) {
                     messages.add(ChatMessage("assistant", response))
                 } else if (error != null) {
-                    messages.add(ChatMessage("system", "⚠️ $error"))
+                    messages.add(ChatMessage("system", "[WARN] $error"))
                 }
 
                 if (iterations > 0) {
-                    messages.add(ChatMessage("system", "📊 $iterations 轮 | $totalTokens tokens | ${latencyMs}ms"))
+                    messages.add(ChatMessage("system", "[STATS] $iterations 轮 | $totalTokens tokens | ${latencyMs}ms"))
                 }
             } catch (e: Exception) {
-                messages.add(ChatMessage("system", "❌ 错误: ${e.message}"))
+                messages.add(ChatMessage("system", "[ERROR] 错误: ${e.message}"))
             } finally {
                 isProcessing = false
             }

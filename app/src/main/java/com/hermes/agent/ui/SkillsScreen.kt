@@ -126,7 +126,27 @@ fun SkillsScreen() {
     LaunchedEffect(Unit) { loadSkills() }
 
     LaunchedEffect(selectedSkill) {
-        selectedSkill?.let { skill ->
+    
+    if (showAddMcpDialog) {
+        AddMcpDialog(
+            onDismiss = { showAddMcpDialog = false },
+            onAdd = { name, url ->
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val py = Python.getInstance()
+                        val mcp = py.getModule("mcp_client")
+                        mcp.callAttr("add_server", name, url)
+                        mcp.callAttr("connect_server", name)
+                        loadMcpServers()
+                    } catch (e: Exception) {
+                        mcpError = e.message ?: e.toString()
+                    }
+                }
+                showAddMcpDialog = false
+            }
+        )
+    }
+    selectedSkill?.let { skill ->
             scope.launch(Dispatchers.IO) {
                 try {
                     val py = Python.getInstance()
@@ -173,8 +193,11 @@ fun SkillsScreen() {
                 IconButton(onClick = { loadSkills() }) {
                     Icon(Icons.Outlined.Refresh, contentDescription = "刷新 Skills")
                 }
-                IconButton(onClick = { showCreateDialog = true }) {
-                    Icon(Icons.Filled.Add, contentDescription = "创建 Skill")
+                IconButton(onClick = {
+                    if (selectedTab == 0) showCreateDialog = true
+                    else showAddMcpDialog = true
+                }) {
+                    Icon(Icons.Filled.Add, contentDescription = if (selectedTab == 0) "创建 Skill" else "添加 MCP 服务器")
                 }
             }
         )
@@ -322,6 +345,26 @@ fun SkillsScreen() {
         } // end if selectedTab == 1
     }
 
+
+    if (showAddMcpDialog) {
+        AddMcpDialog(
+            onDismiss = { showAddMcpDialog = false },
+            onAdd = { name, url ->
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val py = Python.getInstance()
+                        val mcp = py.getModule("mcp_client")
+                        mcp.callAttr("add_server", name, url)
+                        mcp.callAttr("connect_server", name)
+                        loadMcpServers()
+                    } catch (e: Exception) {
+                        mcpError = e.message ?: e.toString()
+                    }
+                }
+                showAddMcpDialog = false
+            }
+        )
+    }
     selectedSkill?.let { skill ->
         if (skillContent.isNotEmpty()) {
             AlertDialog(
